@@ -791,12 +791,10 @@ void write(char* buffer, uint64_t dec_sig, int dec_exp) noexcept {
     dec_exp = -dec_exp;
   }
   *buffer++ = sign;
-  if (dec_exp >= 100) {
-    auto [a, bb] = divmod100<3>(dec_exp);
-    *buffer++ = '0' + a;
-    dec_exp = bb;
-  }
-  memcpy(buffer, digits2(dec_exp), 2);
+  auto [a, bb] = divmod100<3>(dec_exp);
+  *buffer = '0' + a;
+  buffer += dec_exp >= 100;
+  memcpy(buffer, digits2(bb), 2);
   buffer[2] = '\0';
 }
 
