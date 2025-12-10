@@ -723,7 +723,7 @@ struct div_mod_result {
 template <int num_digits>
 inline auto divmod100(uint32_t value) noexcept -> div_mod_result {
   static_assert(num_digits == 3 || num_digits == 4, "wrong number of digits");
-  constexpr int exp = num_digits == 3 ? 12 : 19;
+  constexpr int exp = 19;  // Don't use 12 for 3 digits since it's slower.
   assert(value < (num_digits == 3 ? 1'000 : 10'000));
   constexpr int sig = (1 << exp) / 100 + 1;
   uint32_t div = (value * sig) >> exp;  // value / 100
