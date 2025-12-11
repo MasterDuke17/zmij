@@ -18,9 +18,9 @@ struct uint128 {
   uint64_t hi;
   uint64_t lo;
 
-  explicit operator uint64_t() const noexcept { return lo; }
+  [[maybe_unused]] explicit operator uint64_t() const noexcept { return lo; }
 
-  auto operator>>(int shift) const noexcept -> uint128 {
+  [[maybe_unused]] auto operator>>(int shift) const noexcept -> uint128 {
     assert(shift >= 64 && shift < 128);
     return {0, hi >> (shift - 64)};
   }
@@ -753,7 +753,7 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
   uint32_t cc = abbcc % 100;
   auto [a, bb] = divmod100<3>(abb);
 
-  *buffer = '0' + a;
+  *buffer = char('0' + a);
   buffer += a != 0;
   memcpy(buffer + 0, digits2(bb), 2);
   memcpy(buffer + 2, digits2(cc), 2);
@@ -792,8 +792,8 @@ void write(char* buffer, uint64_t dec_sig, int dec_exp) noexcept {
     dec_exp = -dec_exp;
   }
   *buffer++ = sign;
-  auto [a, bb] = divmod100<3>(dec_exp);
-  *buffer = '0' + a;
+  auto [a, bb] = divmod100<3>(uint32_t(dec_exp));
+  *buffer = char('0' + a);
   buffer += dec_exp >= 100;
   memcpy(buffer, digits2(bb), 2);
   buffer[2] = '\0';
@@ -903,7 +903,7 @@ void dtoa(double value, char* buffer) noexcept {
 
   // Both dec_sig_under and dec_sig_over are in the interval - pick the closest.
   int cmp = scaled_sig - ((dec_sig_under + dec_sig_over) << 1);
-  bool under_closer = cmp < 0 || cmp == 0 && (dec_sig_under & 1) == 0;
+  bool under_closer = cmp < 0 || (cmp == 0 && (dec_sig_under & 1) == 0);
   return write(buffer, under_closer ? dec_sig_under : dec_sig_over, dec_exp);
 }
 
