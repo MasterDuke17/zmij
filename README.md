@@ -4,6 +4,9 @@ A double-to-string conversion algorithm based on Schubfach
 
 ## Features
 
+* Round trip guarantee
+* Shortest decimal representation
+* Correct rounding
 * High performance
 * Fast compile time
 * Zero dependencies
