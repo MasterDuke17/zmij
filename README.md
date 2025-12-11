@@ -11,7 +11,7 @@ A double-to-string conversion algorithm based on [Schubfach](https://fmt.dev/pap
 * Fast compile time
 * Zero dependencies
 * Small, clean codebase consisting of one source file and one header
-* Permissive [license](https://github.com/vitaut/schubfach/blob/main/LICENSE)
+* Permissive [license](https://github.com/vitaut/zmij/blob/main/LICENSE)
 
 ## Usage
 
