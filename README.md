@@ -1,6 +1,6 @@
 # Żmij
 
-A double-to-string conversion algorithm based on Schubfach
+A double-to-string conversion algorithm based on [Schubfach](https://fmt.dev/papers/Schubfach4.pdf)
 
 ## Features
 
