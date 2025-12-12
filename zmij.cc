@@ -718,13 +718,10 @@ struct div_mod_result {
   uint32_t mod;
 };
 
-// Returns {value / 100, value % 100} correct for values of up to num_digits
-// decimal digits where num_digits should be 3 or 4.
-template <int num_digits>
+// Returns {value / 100, value % 100} correct for values of up to 4 digits.
 inline auto divmod100(uint32_t value) noexcept -> div_mod_result {
-  static_assert(num_digits == 3 || num_digits == 4, "wrong number of digits");
-  constexpr int exp = 19;  // 19 is faster than 12 for 3 digits.
-  assert(value < (num_digits == 3 ? 1'000 : 10'000));
+  constexpr int exp = 19;  // 19 is faster or equal to 12 even for 3 digits.
+  assert(value < 10'000);
   constexpr int sig = (1 << exp) / 100 + 1;
   uint32_t div = (value * sig) >> exp;  // value / 100
   return {div, value - div * 100};
@@ -736,7 +733,7 @@ inline void write2digits(char* buffer, uint32_t value) noexcept {
 
 // Writes 4 digits and removes trailing zeros.
 auto write4digits(char* buffer, uint32_t value) noexcept -> char* {
-  auto [aa, bb] = divmod100<4>(value);
+  auto [aa, bb] = divmod100(value);
   write2digits(buffer + 0, aa);
   write2digits(buffer + 2, bb);
   return buffer + 4 - num_trailing_zeros[bb] -
@@ -754,7 +751,7 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
   uint32_t ddee = abbccddee % 10'000;
   uint32_t abb = abbcc / 100;
   uint32_t cc = abbcc % 100;
-  auto [a, bb] = divmod100<3>(abb);
+  auto [a, bb] = divmod100(abb);
 
   *buffer = char('0' + a);
   buffer += a != 0;
@@ -766,10 +763,10 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
     if (ddee != 0) return write4digits(buffer, ddee);
     return buffer - num_trailing_zeros[cc] - (cc == 0) * num_trailing_zeros[bb];
   }
-  auto [dd, ee] = divmod100<4>(ddee);
+  auto [dd, ee] = divmod100(ddee);
   uint32_t ffgg = ffgghhii / 10'000;
   uint32_t hhii = ffgghhii % 10'000;
-  auto [ff, gg] = divmod100<4>(ffgg);
+  auto [ff, gg] = divmod100(ffgg);
   write2digits(buffer + 0, dd);
   write2digits(buffer + 2, ee);
   write2digits(buffer + 4, ff);
@@ -795,7 +792,7 @@ void write(char* buffer, uint64_t dec_sig, int dec_exp) noexcept {
     dec_exp = -dec_exp;
   }
   *buffer++ = sign;
-  auto [a, bb] = divmod100<3>(uint32_t(dec_exp));
+  auto [a, bb] = divmod100(uint32_t(dec_exp));
   *buffer = char('0' + a);
   buffer += dec_exp >= 100;
   write2digits(buffer, bb);
