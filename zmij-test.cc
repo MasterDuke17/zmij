@@ -10,6 +10,19 @@ auto dtoa(double value) -> std::string {
   return buffer;
 }
 
+TEST(zmij_test, utilities) {
+  EXPECT_EQ(lzcntl(0), 64);
+  EXPECT_EQ(lzcntl(1), 63);
+  EXPECT_EQ(lzcntl(~0ull), 0);
+
+  EXPECT_EQ(count_trailing_nonzeros(0x30303030'30303030ull), 0);
+  EXPECT_EQ(count_trailing_nonzeros(0x30303030'30303031ull), 1);
+  EXPECT_EQ(count_trailing_nonzeros(0x30303030'30303039ull), 1);
+  EXPECT_EQ(count_trailing_nonzeros(0x30393030'39303030ull), 7);
+  EXPECT_EQ(count_trailing_nonzeros(0x31303030'30303030ull), 8);
+  EXPECT_EQ(count_trailing_nonzeros(0x39303030'30303030ull), 8);
+}
+
 TEST(zmij_test, umul192_upper64_modified) {
   auto pow10 = pow10_significands[0];
   EXPECT_EQ(

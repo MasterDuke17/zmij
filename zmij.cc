@@ -710,13 +710,41 @@ inline auto digits2(size_t value) noexcept -> const char* {
   return &data[value * 2];
 }
 
-// The idea of branchless trailing zero removal is by Alexander Bolz.
-const char num_trailing_zeros[] =
-    "\2\0\0\0\0\0\0\0\0\0\1\0\0\0\0\0\0\0\0\0"
-    "\1\0\0\0\0\0\0\0\0\0\1\0\0\0\0\0\0\0\0\0"
-    "\1\0\0\0\0\0\0\0\0\0\1\0\0\0\0\0\0\0\0\0"
-    "\1\0\0\0\0\0\0\0\0\0\1\0\0\0\0\0\0\0\0\0"
-    "\1\0\0\0\0\0\0\0\0\0\1\0\0\0\0\0\0\0\0\0";
+// MSVC makes lzcnt available always, but it's not constexpr
+inline auto lzcntl(uint64_t x) noexcept -> size_t
+{
+#ifdef _MSC_VER
+  return _lzcnt_u64(x);
+#else
+  // Unlike MSVC, clang and gcc recognize this implementation and replace
+  // it with the assembly instructions which are appropriate for the
+  // target (lzcnt or bsr + zero handling).
+  size_t n = 64;
+  while (x > 0) {
+    x >>= 1;
+    --n;
+  }
+  return n;
+#endif
+}
+
+inline auto count_trailing_nonzeros(uint64_t x) noexcept -> size_t {
+  // This assumes little-endian, that is the first char of the string
+  // is in the lowest byte and the last char is in the highest byte.
+  // We count the number of characters until there are only '0' == 0x30
+  // characters left.
+  // The code is equivalent to
+  //   return 8 - lzcntl(x & ~0x30303030'30303030) / 8
+  // but if the BSR instruction is emitted, subtracting the constant
+  // before dividing allows combining it with the subtraction from BSR
+  // counting in the opposite direction.
+  //   return size_t(71 - lzcntl(x & ~0x30303030'30303030)) / 8;
+  // Additionally, the bsr instruction requires a zero check.  Since the
+  // high bit is never set we can avoid the zero check by shifting the
+  // datum left by one and using XOR to both remove the 0x30s and insert
+  // a sentinel bit at the end. 
+  return size_t(70 - lzcntl(x << 1 ^ (0x30303030'30303030ull << 1 | 1))) / 8;
+}
 
 struct divmod_result {
   uint32_t div;
@@ -736,13 +764,17 @@ inline void write2digits(char* buffer, uint32_t value) noexcept {
   memcpy(buffer, digits2(value), 2);
 }
 
-// Writes 4 digits and removes trailing zeros.
-auto write4digits_trim_zeros(char* buffer, uint32_t value) noexcept -> char* {
-  auto [aa, bb] = divmod100(value);
-  write2digits(buffer + 0, aa);
-  write2digits(buffer + 2, bb);
-  return buffer + 4 - num_trailing_zeros[bb] -
-         (bb == 0) * num_trailing_zeros[aa];
+auto write8digits(uint32_t aa, uint32_t bb, uint32_t cc, uint32_t dd) noexcept -> uint64_t {
+  uint16_t bitsaa;
+  memcpy(&bitsaa, digits2(aa), 2);
+  uint16_t bitsbb;
+  memcpy(&bitsbb, digits2(bb), 2);
+  uint16_t bitscc;
+  memcpy(&bitscc, digits2(cc), 2);
+  uint16_t bitsdd;
+  memcpy(&bitsdd, digits2(dd), 2);
+
+  return uint64_t(bitsdd) << 48 | uint64_t(bitscc) << 32 | uint64_t(bitsbb) << 16 | bitsaa;
 }
 
 // Writes a significand consisting of 16 or 17 decimal digits and removes
@@ -757,28 +789,29 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
   uint32_t abb = abbcc / 100;
   uint32_t cc = abbcc % 100;
   auto [a, bb] = divmod100(abb);
+  auto [dd, ee] = divmod100(ddee);
 
   *buffer = char('0' + a);
   buffer += a != 0;
-  write2digits(buffer + 0, bb);
-  write2digits(buffer + 2, cc);
-  buffer += 4;
 
-  if (ffgghhii == 0) {
-    if (ddee != 0) return write4digits_trim_zeros(buffer, ddee);
-    return buffer - num_trailing_zeros[cc] - (cc == 0) * num_trailing_zeros[bb];
+  // Use an intermediate uint64_t to make sure that the compiler constructs
+  // the value in a register.  This way the buffer is written to memory in
+  // one go and count_trailing_nonzeros doesn't have to load from memory.
+  uint64_t bits = write8digits(bb, cc, dd, ee);
+  memcpy(buffer, &bits, 8);
+
+  if (ffgghhii == 0) [[unlikely]] {
+    return buffer + count_trailing_nonzeros(bits);
   }
-  auto [dd, ee] = divmod100(ddee);
+
+  buffer += 8;
   uint32_t ffgg = ffgghhii / 10'000;
   uint32_t hhii = ffgghhii % 10'000;
   auto [ff, gg] = divmod100(ffgg);
-  write2digits(buffer + 0, dd);
-  write2digits(buffer + 2, ee);
-  write2digits(buffer + 4, ff);
-  write2digits(buffer + 6, gg);
-  if (hhii != 0) return write4digits_trim_zeros(buffer + 8, hhii);
-  return buffer + 8 - num_trailing_zeros[gg] -
-         (gg == 0) * num_trailing_zeros[ff];
+  auto [hh, ii] = divmod100(hhii);
+  uint64_t bits2 = write8digits(ff, gg, hh, ii);
+  memcpy(buffer, &bits2, 8);
+  return buffer + count_trailing_nonzeros(bits2);
 }
 
 // Writes the decimal FP number dec_sig * 10**dec_exp to buffer.
