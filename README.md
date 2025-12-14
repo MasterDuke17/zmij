@@ -58,7 +58,7 @@ on [dtoa-benchmark](https://github.com/fmtlib/dtoa-benchmark) run on Apple M1.
 Compile time is ~60ms by default and ~68ms with optimizations enabled as measured by
 
 ```
-% time c++ -c -std=c++20 schubfach.cc [-O2]
+% time c++ -c -std=c++20 zmij.cc [-O2]
 ```
 
 taking the best of 3 runs.
