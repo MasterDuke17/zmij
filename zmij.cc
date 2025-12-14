@@ -750,23 +750,23 @@ inline auto count_trailing_nonzeros(uint64_t x) noexcept -> size_t {
   return size_t(70 - lzcntl(x << 1 ^ (0x30303030'30303030ull << 1 | 1))) / 8;
 }
 
-inline void write2digits(char* buffer, uint32_t value) noexcept {
+inline void write2digits(void* buffer, uint32_t value) noexcept {
   memcpy(buffer, digits2(value), 2);
 }
 
-auto write8digits(uint32_t aa, uint32_t bb, uint32_t cc, uint32_t dd) noexcept
+auto digits8(uint32_t aa, uint32_t bb, uint32_t cc, uint32_t dd) noexcept
     -> uint64_t {
-  uint16_t bitsaa;
-  memcpy(&bitsaa, digits2(aa), 2);
-  uint16_t bitsbb;
-  memcpy(&bitsbb, digits2(bb), 2);
-  uint16_t bitscc;
-  memcpy(&bitscc, digits2(cc), 2);
-  uint16_t bitsdd;
-  memcpy(&bitsdd, digits2(dd), 2);
+  uint16_t aa_digits;
+  write2digits(&aa_digits, aa);
+  uint16_t bb_digits;
+  write2digits(&bb_digits, bb);
+  uint16_t cc_digits;
+  write2digits(&cc_digits, cc);
+  uint16_t dd_digits;
+  write2digits(&dd_digits, dd);
 
-  return uint64_t(bitsdd) << 48 | uint64_t(bitscc) << 32 |
-         uint64_t(bitsbb) << 16 | bitsaa;
+  return uint64_t(dd_digits) << 48 | uint64_t(cc_digits) << 32 |
+         uint64_t(bb_digits) << 16 | aa_digits;
 }
 
 // Writes a significand consisting of 16 or 17 decimal digits and removes
@@ -789,18 +789,18 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
   // Use an intermediate uint64_t to make sure that the compiler constructs
   // the value in a register. This way the buffer is written to memory in
   // one go and count_trailing_nonzeros doesn't have to load from memory.
-  uint64_t bits = write8digits(bb, cc, dd, ee);
-  memcpy(buffer, &bits, 8);
-  if (ffgghhii == 0) return buffer + count_trailing_nonzeros(bits);
+  uint64_t digits = digits8(bb, cc, dd, ee);
+  memcpy(buffer, &digits, 8);
+  if (ffgghhii == 0) return buffer + count_trailing_nonzeros(digits);
 
   buffer += 8;
   uint32_t ffgg = ffgghhii / 10'000;
   uint32_t hhii = ffgghhii % 10'000;
   auto [ff, gg] = divmod100(ffgg);
   auto [hh, ii] = divmod100(hhii);
-  bits = write8digits(ff, gg, hh, ii);
-  memcpy(buffer, &bits, 8);
-  return buffer + count_trailing_nonzeros(bits);
+  digits = digits8(ff, gg, hh, ii);
+  memcpy(buffer, &digits, 8);
+  return buffer + count_trailing_nonzeros(digits);
 }
 
 // Writes the decimal FP number dec_sig * 10**dec_exp to buffer.
