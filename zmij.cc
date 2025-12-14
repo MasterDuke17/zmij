@@ -683,17 +683,12 @@ auto umul128(uint64_t x, uint64_t y) noexcept -> uint128_t {
 #endif  // __SIZEOF_INT128__
 }
 
-// Computes upper 64 bits of multiplication of pow10 and scaled_sig with
-// modified round-to-odd rounding of the result,
-// where pow10 = (pow10_hi << 64) | pow10_lo.
-auto umul192_upper64_modified(uint64_t pow10_hi, uint64_t pow10_lo,
-                              uint64_t scaled_sig) noexcept -> uint64_t {
-  uint128_t result =
-      umul128(pow10_hi, scaled_sig) + (umul128(pow10_lo, scaled_sig) >> 64);
-  uint64_t z = uint64_t(result >> 1);
-  constexpr uint64_t mask = (uint64_t(1) << 63) - 1;
-  // OR with 1 if z is not divisible by 2**63.
-  return uint64_t(result >> 64) | (((z & mask) + mask) >> 63);
+// Computes upper 64 bits of multiplication of x and y, discards the least
+// significand bit and rounds to odd, where x = uint128_t(x_hi << 64) | x_lo.
+auto umul192_upper64_inexact_to_odd(uint64_t x_hi, uint64_t x_lo,
+                                    uint64_t y) noexcept -> uint64_t {
+  uint128_t result = umul128(x_hi, y) + (umul128(x_lo, y) >> 64);
+  return uint64_t(result >> 64) | ((uint64_t(result) >> 1) != 0);
 }
 
 // Converts value in the range [0, 100) to a string. GCC generates a bit better
@@ -875,8 +870,8 @@ void dtoa(double value, char* buffer) noexcept {
   int pow10_bin_exp = -dec_exp * log2_pow10_sig >> log2_pow10_exp;
   // pow10 = ((pow10_hi << 64) | pow10_lo) * 2**(pow10_bin_exp - 127)
 
-  // Shift to ensure the intermediate result in umul192_upper64_modified has
-  // a fixed 128-bit fractional width. For example, 3 * 2**59 and 3 * 2**60
+  // Shift to ensure the intermediate result in umul192_upper64_inexact_to_odd
+  // has a fixed 128-bit fractional width. For example, 3 * 2**59 and 3 * 2**60
   // both have dec_exp = 2 and dividing them by 10**dec_exp would have the
   // decimal point in different (bit) positions without the shift:
   //   3 * 2**59 / 100 = 1.72...e+16 (shift = 1 + 1)
@@ -886,9 +881,9 @@ void dtoa(double value, char* buffer) noexcept {
   // Compute the estimates of lower and upper bounds of the rounding interval
   // by multiplying them by the power of 10 and applying modified rounding.
   uint64_t bin_sig_lsb = bin_sig & 1;
-  lower = umul192_upper64_modified(pow10_hi, pow10_lo, lower << shift) +
+  lower = umul192_upper64_inexact_to_odd(pow10_hi, pow10_lo, lower << shift) +
           bin_sig_lsb;
-  upper = umul192_upper64_modified(pow10_hi, pow10_lo, upper << shift) -
+  upper = umul192_upper64_inexact_to_odd(pow10_hi, pow10_lo, upper << shift) -
           bin_sig_lsb;
 
   // The idea of using a single shorter candidate is by Cassio Neri.
@@ -896,8 +891,8 @@ void dtoa(double value, char* buffer) noexcept {
   uint64_t shorter = 10 * ((upper >> 2) / 10);
   if ((shorter << 2) >= lower) return write(buffer, shorter, dec_exp);
 
-  uint64_t scaled_sig =
-      umul192_upper64_modified(pow10_hi, pow10_lo, bin_sig_shifted << shift);
+  uint64_t scaled_sig = umul192_upper64_inexact_to_odd(
+      pow10_hi, pow10_lo, bin_sig_shifted << shift);
   uint64_t dec_sig_under = scaled_sig >> 2;
   uint64_t dec_sig_over = dec_sig_under + 1;
 
