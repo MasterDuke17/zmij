@@ -674,9 +674,8 @@ inline auto umul128(uint64_t x, uint64_t y) noexcept -> uint128_t {
   uint64_t ad = a * d;
   uint64_t bd = b * d;
 
-  uint64_t mid = (bd >> 32) + uint32_t(ad) + uint32_t(bc);
-  return {ac + (mid >> 32) + (ad >> 32) + (bc >> 32),
-          (mid << 32) + uint32_t(bd)};
+  uint64_t cs = uint32_t(ad) + uint32_t(bc) + (bd >> 32);  // cross sum
+  return {ac + (ad >> 32) + (bc >> 32) + (cs >> 32), (cs << 32) + uint32_t(bd)};
 #endif  // __SIZEOF_INT128__
 }
 
