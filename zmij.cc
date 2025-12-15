@@ -744,6 +744,7 @@ inline auto lzcntl(uint64_t x) noexcept -> size_t {
 inline auto count_trailing_nonzeros(uint64_t x) noexcept -> size_t {
   // This assumes little-endian, that is the first char of the string
   // is in the lowest byte and the last char is in the highest byte.
+  assert(!is_big_endian());
   // We count the number of characters until there are only '0' == 0x30
   // characters left.
   // The code is equivalent to
@@ -756,7 +757,6 @@ inline auto count_trailing_nonzeros(uint64_t x) noexcept -> size_t {
   // high bit is never set we can avoid the zero check by shifting the
   // datum left by one and using XOR to both remove the 0x30s and insert
   // a sentinel bit at the end.
-  assert(!is_big_endian());
   return size_t(70 - lzcntl(x << 1 ^ (0x30303030'30303030ull << 1 | 1))) / 8;
 }
 
