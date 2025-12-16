@@ -897,6 +897,36 @@ void dtoa(double value, char* buffer) noexcept {
   //   3 * 2**60 / 100 = 3.45...e+16 (shift = 2 + 1)
   int shift = bin_exp + pow10_bin_exp + 1;
 
+  if (regular) {
+    uint64_t bin_sig_shifted = bin_sig << shift;
+    uint128_t bin_sig_scaled = umul128(pow10_hi, bin_sig_shifted) +
+                               (umul128(pow10_lo - 1, bin_sig_shifted) >> 64);
+
+    // The top 64-bit of bin_sig_scaled contain the integral part and the bottom
+    // ones contain the fractional part.
+    uint64_t bin_sig_scaled_hi = uint64_t(bin_sig_scaled >> 64);
+    uint64_t bin_sig_scaled_lo = uint64_t(bin_sig_scaled);
+
+    constexpr int num_fractional_bits = 60;
+    uint64_t mod = bin_sig_scaled_hi % 10;
+    uint64_t full_mod = (mod << num_fractional_bits) | (bin_sig_scaled_lo >> 4);
+
+    uint64_t half_ulp = pow10_hi >> (5 - shift);
+    uint64_t upper = full_mod + half_ulp;
+
+    // An optimization from yy_double by Yaoyuan Guo:
+    if ((bin_sig_scaled_lo != (uint64_t(1) << 63)) && (full_mod != half_ulp) &&
+        ((uint64_t(10) << num_fractional_bits) - upper > uint64_t(1))) {
+      bool round = (upper >> num_fractional_bits) >= 10;
+      uint64_t shorter = (bin_sig_scaled_hi - mod) + (round ? 10 : 0);
+      uint64_t longer =
+          bin_sig_scaled_hi + (bin_sig_scaled_lo >= (uint64_t(1) << 63));
+      return write(buffer,
+                   ((half_ulp >= full_mod) + round != 0) ? shorter : longer,
+                   dec_exp);
+    }
+  }
+
   // Shift the significand so that boundaries are integer.
   uint64_t bin_sig_shifted = bin_sig << 2;
 
