@@ -834,17 +834,17 @@ namespace zmij {
 void dtoa(double value, char* buffer) noexcept {
   uint64_t bits = 0;
   memcpy(&bits, &value, sizeof(value));
+
   *buffer = '-';
   buffer += bits >> 63;
 
   constexpr int num_sig_bits = std::numeric_limits<double>::digits - 1;
-  constexpr int exp_mask = 0x7ff;
-  int bin_exp = int(bits >> num_sig_bits) & exp_mask;
-
   constexpr uint64_t implicit_bit = uint64_t(1) << num_sig_bits;
   uint64_t bin_sig = bits & (implicit_bit - 1);  // binary significand
-
   bool regular = bin_sig != 0;
+
+  constexpr int exp_mask = 0x7ff;
+  int bin_exp = int(bits >> num_sig_bits) & exp_mask;  // binary exponent
   if (((bin_exp + 1) & exp_mask) <= 1) [[unlikely]] {
     if (bin_exp != 0) {
       memcpy(buffer, bin_sig == 0 ? "inf" : "nan", 4);
@@ -868,21 +868,13 @@ void dtoa(double value, char* buffer) noexcept {
     if (f << -bin_exp == bin_sig) return write(buffer, f, 0);
   }
 
-  // Shift the significand so that boundaries are integer.
-  uint64_t bin_sig_shifted = bin_sig << 2;
-
-  // Compute the shifted boundaries of the rounding interval (Rv).
-  uint64_t lower = bin_sig_shifted - (regular + 1);
-  uint64_t upper = bin_sig_shifted + 2;
-
+  // Compute the decimal exponent as floor(log10(2**bin_exp)) if regular or
+  // floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
   // log10_3_over_4_sig = round(log10(3/4) * 2**log10_2_exp)
   constexpr int log10_3_over_4_sig = -131'008;
   // log10_2_sig = round(log10(2) * 2**log10_2_exp)
   constexpr int log10_2_sig = 315'653;
   constexpr int log10_2_exp = 20;
-
-  // Compute the decimal exponent as floor(log10(2**bin_exp)) if regular or
-  // floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
   assert(bin_exp >= -1334 && bin_exp <= 2620);
   int dec_exp =
       (bin_exp * log10_2_sig + !regular * log10_3_over_4_sig) >> log10_2_exp;
@@ -892,7 +884,6 @@ void dtoa(double value, char* buffer) noexcept {
 
   // log2_pow10_sig = round(log2(10) * 2**log2_pow10_exp) + 1
   constexpr int log2_pow10_sig = 217'707, log2_pow10_exp = 16;
-
   assert(dec_exp >= -350 && dec_exp <= 350);
   // pow10_bin_exp = floor(log2(10**-dec_exp))
   int pow10_bin_exp = -dec_exp * log2_pow10_sig >> log2_pow10_exp;
@@ -906,13 +897,16 @@ void dtoa(double value, char* buffer) noexcept {
   //   3 * 2**60 / 100 = 3.45...e+16 (shift = 2 + 1)
   int shift = bin_exp + pow10_bin_exp + 1;
 
+  // Shift the significand so that boundaries are integer.
+  uint64_t bin_sig_shifted = bin_sig << 2;
+
   // Compute the estimates of lower and upper bounds of the rounding interval
   // by multiplying them by the power of 10 and applying modified rounding.
-  uint64_t bin_sig_lsb = bin_sig & 1;
-  lower = umul192_upper64_inexact_to_odd(pow10_hi, pow10_lo, lower << shift) +
-          bin_sig_lsb;
-  upper = umul192_upper64_inexact_to_odd(pow10_hi, pow10_lo, upper << shift) -
-          bin_sig_lsb;
+  uint64_t lsb = bin_sig & 1;
+  uint64_t lower = (bin_sig_shifted - (regular + 1)) << shift;
+  lower = umul192_upper64_inexact_to_odd(pow10_hi, pow10_lo, lower) + lsb;
+  uint64_t upper = (bin_sig_shifted + 2) << shift;
+  upper = umul192_upper64_inexact_to_odd(pow10_hi, pow10_lo, upper) - lsb;
 
   // The idea of using a single shorter candidate is by Cassio Neri.
   // It is less or equal to the upper bound by construction.
