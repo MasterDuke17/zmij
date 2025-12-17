@@ -35,23 +35,25 @@ C++ standard library implementations and ~2x faster than
 on [dtoa-benchmark](https://github.com/fmtlib/dtoa-benchmark) run on Apple M1.
 
 | Function      | Time (ns) | Speedup |
-|---------------|----------:|--------:|
-| ostringstream | 888.086   | 1.00x   |
-| sprintf       | 735.842   | 1.21x   |
-| doubleconv    | 83.281    | 10.66x  |
-| to_chars      | 42.965    | 20.67x  |
-| ryu           | 37.733    | 23.54x  |
-| schubfach     | 25.338    | 35.05x  |
-| fmt           | 22.968    | 38.67x  |
-| dragonbox     | 20.925    | 42.44x  |
-| zmij          | 12.253    | 72.48x  |
-| null          | 0.948     | 937.15x |
+|--------------:|----------:|--------:|
+| ostringstream | 874.752   | 1.00x   |
+| sprintf       | 734.849   | 1.19x   |
+| doubleconv    | 85.479    | 10.23x  |
+| to_chars      | 42.709    | 20.48x  |
+| ryu           | 37.404    | 23.39x  |
+| schubfach     | 25.166    | 34.76x  |
+| fmt           | 22.302    | 39.22x  |
+| dragonbox     | 20.823    | 42.01x  |
+| yy            | 14.016    | 62.41x  |
+| zmij          | 12.259    | 71.36x  |
+| null          | 0.929     | 941.19x |
 
-<img width="787" height="350" alt="image"
-     src="https://github.com/user-attachments/assets/91016b7a-fed6-4d5b-a62f-493f7d5d5310" />
+<img width="783" height="354" alt="image"
+     src="https://github.com/user-attachments/assets/7b65921b-af06-4ffa-ab31-e61e7f14abf8" />
 
-<img width="873" height="668" alt="image"
-     src="https://github.com/user-attachments/assets/6ad693b9-1a8d-4fe4-ba45-26dafd8e3e13" />
+<img width="888" height="675" alt="image"
+     src="https://github.com/user-attachments/assets/96492ad2-c8b1-4963-8ad0-a89abac4bcc4" />
+
 
 ## Compile time
 
