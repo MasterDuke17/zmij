@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Power of 10 overestimates generator for the Schubfach algorithm:
-# https://fmt.dev/papers/Schubfach4.pdf.
+# Power of 10 significand generator for Żmij.
 # Copyright (c) 2025 - present, Victor Zverovich
 
 import math
@@ -23,6 +22,5 @@ for dec_exp in range(-dec_exp_max, -dec_exp_min + 1, 1):
         result = dec_pow * bin_pow
     else:
         result = dec_pow // bin_pow
-    result = result + 1
     hi, lo = result >> 64, (result & (2**64 - 1))
     print(f"{{{hi:#x}, {lo:#018x}}}, // {dec_exp:4}")
