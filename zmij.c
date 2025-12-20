@@ -895,15 +895,6 @@ void zmij_dtoa(double value, char* buffer) {
   bin_sig ^= implicit_bit;
   bin_exp -= num_sig_bits + exp_bias;
 
-  // Handle small integers.
-  if (bin_exp < 0 && bin_exp >= -num_sig_bits) {
-    uint64_t f = bin_sig >> -bin_exp;
-    if ((f << -bin_exp) == bin_sig) {
-      write(buffer, f, 0);
-      return;
-    }
-  }
-
   // Compute the decimal exponent as floor(log10(2**bin_exp)) if regular or
   // floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
   // log10_3_over_4_sig = round(log10(3/4) * 2**log10_2_exp)
