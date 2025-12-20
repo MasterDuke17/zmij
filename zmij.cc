@@ -955,7 +955,7 @@ void dtoa(double value, char* buffer) noexcept {
         (digit << num_fractional_bits) | (fractional >> num_integral_bits);
     // dec_exp is chosen such that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1)
     // Since 1ulp = 2**bin_exp it will be in the range [1, 10) after scaling by
-    // 10**dec_exp.
+    // 10**dec_exp. Add 1 to combine the shift with division by two.
     uint64_t half_ulp = pow10_hi >> (num_integral_bits - exp_shift + 1);
     uint64_t upper = rem10 + half_ulp;
 
