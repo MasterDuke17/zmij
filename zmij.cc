@@ -949,6 +949,9 @@ void dtoa(double value, char* buffer) noexcept {
     constexpr uint64_t ten = uint64_t(10) << num_fractional_bits;
     // Fixed-point remainder of the scaled significand modulo 10.
     uint64_t rem10 = (digit << num_fractional_bits) | (fractional >> 4);
+    // dec_exp is chosen such that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1)
+    // Since 1ulp = 2**bin_exp it will be in the range [1, 10) after scaling by
+    // 10**dec_exp.
     uint64_t half_ulp = pow10_hi >> (5 - exp_shift);
     uint64_t upper = rem10 + half_ulp;
 
