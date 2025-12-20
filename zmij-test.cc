@@ -34,6 +34,8 @@ TEST(zmij_test, umul192_upper64_inexact_to_odd) {
 
 TEST(zmij_test, normal) { EXPECT_EQ(dtoa(6.62607015e-34), "6.62607015e-34"); }
 
+TEST(zmij_test, small_int) { EXPECT_EQ(dtoa(1), "1.e+00"); }
+
 TEST(zmij_test, zero) {
   EXPECT_EQ(dtoa(0), "0");
   EXPECT_EQ(dtoa(-0.0), "-0");
