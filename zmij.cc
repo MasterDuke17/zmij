@@ -959,7 +959,7 @@ void dtoa(double value, char* buffer) noexcept {
     uint64_t half_ulp = pow10_hi >> (num_integral_bits - exp_shift + 1);
     uint64_t upper = rem10 + half_ulp;
 
-    // An optimization from yy_double by Yaoyuan Guo:
+    // An optimization from yy by Yaoyuan Guo:
     if (fractional != (uint64_t(1) << 63) && rem10 != half_ulp &&
         ten - upper > uint64_t(1)) [[likely]] {
       bool round = (upper >> num_fractional_bits) >= 10;
