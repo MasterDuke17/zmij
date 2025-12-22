@@ -739,10 +739,8 @@ inline auto divmod100(uint32_t value) noexcept -> divmod_result {
 }
 
 inline auto is_big_endian() noexcept -> bool {
-  char bytes[sizeof(int)];
   int n = 1;
-  memcpy(&bytes, &n, sizeof(int));
-  return bytes[0] == 0;
+  return *reinterpret_cast<char*>(&n) != 1;
 }
 
 inline auto countl_zero(uint64_t x) noexcept -> int {
