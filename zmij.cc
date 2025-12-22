@@ -806,6 +806,7 @@ inline auto digits2(size_t value) noexcept -> const char* {
 }
 
 uint64_t to_bcd8(uint64_t abcdefgh) {
+  // An optimization from Xiang JunBo.
   // Three steps BCD.  Base 10000 -> base 100 -> base 10.
   // div and mod are evaluated simultaneously as, e.g.
   //   (abcdefgh / 10000) << 32 + (abcdefgh % 10000)
