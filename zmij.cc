@@ -13,7 +13,7 @@
 #include <string.h>  // memcpy
 
 #include <limits>       // std::numeric_limits
-#include <type_traits>  // std::conditional
+#include <type_traits>  // std::conditional_t
 
 #ifdef _MSC_VER
 #  include <intrin.h>  // lzcnt/adc/umul128/umulh
@@ -840,9 +840,7 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
   *buffer = char('0' + a);
   buffer += a != 0;
 
-  // 0x30 == '0'
-  constexpr uint64_t zerobits = 0x30303030'30303030ull;
-
+  constexpr uint64_t zerobits = 0x30303030'30303030ull; // 0x30 == '0'
   uint64_t bcd = to_bcd8(bbccddee);
   uint64_t bits = bcd | zerobits;
   memcpy(buffer, &bits, 8);
@@ -970,12 +968,11 @@ namespace zmij::detail {
 
 template <typename Float> void to_string(Float value, char* buffer) noexcept {
   static_assert(std::numeric_limits<Float>::is_iec559, "IEEE 754 required");
-  using uint =
-      std::conditional_t<std::is_same<Float, double>{}, uint64_t, uint32_t>;
+  constexpr int num_bits = sizeof(Float) * CHAR_BIT;
+  using uint = std::conditional_t<num_bits == 64, uint64_t, uint32_t>;
   uint bits = 0;
   memcpy(&bits, &value, sizeof(value));
 
-  constexpr int num_bits = sizeof(Float) * CHAR_BIT;
   *buffer = '-';
   buffer += bits >> (num_bits - 1);
 
