@@ -16,6 +16,10 @@
 #include <limits>       // std::numeric_limits
 #include <type_traits>  // std::conditional_t
 
+#if __has_include(<arm_neon.h>)
+#  include <arm_neon.h>
+#endif
+
 #ifdef _MSC_VER
 #  include <intrin.h>  // lzcnt/adc/umul128/umulh
 #endif
@@ -830,6 +834,7 @@ auto to_bcd8(uint64_t abcdefgh) noexcept -> uint64_t {
 // Writes a significand consisting of up to 17 decimal digits (16-17 for
 // normals) and removes trailing zeros.
 auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
+#ifndef __ARM_NEON__
   // Each digits is denoted by a letter so value is abbccddeeffgghhii where
   // digit a can be zero.
   uint32_t abbccddee = uint32_t(value / 100'000'000);
@@ -854,6 +859,76 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
   bits = bcd | zerobits;
   memcpy(buffer, &bits, 8);
   return buffer + count_trailing_nonzeros(bcd);
+#else   // __ARM_NEON__
+  // An optimized version for NEON by Dougall Johnson.
+  struct to_string_constants {
+    uint64_t mul_const;
+    uint64_t hundred_million;
+    int32x4_t multipliers32;
+    int16x8_t multipliers16;
+  };
+
+  static const struct to_string_constants constants = {
+      .mul_const = 0xabcc77118461cefd,
+      .hundred_million = 100000000,
+      .multipliers32 = {0x68db8bb, -10000 + 0x10000, 0x147b000, -100 + 0x10000},
+      .multipliers16 = {0xce0, -10 + 0x100},
+  };
+
+  const struct to_string_constants* c = &constants;
+
+  // Compiler barrier, or clang doesn't load from memory and generates 15 more
+  // instructions
+  asm("" : "+r"(c));
+
+  uint64_t hundred_million = c->hundred_million;
+
+  // Compiler barrier, or clang narrows the load to 32-bit and unpairs it.
+  asm("" : "+r"(hundred_million));
+
+  // Equivalent to hi = value / 100000000, lo = value % 100000000.
+  uint64_t hi = ((__uint128_t)value * c->mul_const) >> 90;
+  uint64_t lo = value - hi * hundred_million;
+
+  // We could probably make this bit faster, but we're preferring to
+  // reuse the constants for now.
+  uint64_t top = ((__uint128_t)hi * c->mul_const) >> 90;
+  hi -= top * hundred_million;
+
+  char* start = buffer;
+  *buffer = char('0' + top);
+  buffer += top != 0;
+
+  uint64x1_t hundredmillions = {hi | ((uint64_t)lo << 32)};
+
+  int32x2_t high_10000 =
+      vshr_n_u32(vqdmulh_n_s32(hundredmillions, c->multipliers32[0]), 9);
+  int32x2_t tenthousands =
+      vmla_n_s32(hundredmillions, high_10000, c->multipliers32[1]);
+
+  int32x4_t extended = vshll_n_u16(tenthousands, 0);
+
+  // Compiler barrier, or clang breaks the subsequent MLA into UADDW + MUL.
+  asm("" : "+w"(extended));
+
+  int32x4_t high_100 = vqdmulhq_n_s32(extended, c->multipliers32[2]);
+  int32x4_t hundreds = vmlaq_n_s32(extended, high_100, c->multipliers32[3]);
+  int16x8_t high_10 = vqdmulhq_n_s16(hundreds, c->multipliers16[0]);
+  int16x8_t digits =
+      vrev64q_u8(vmlaq_n_s16(hundreds, high_10, c->multipliers16[1]));
+  int16x8_t ascii = vaddq_u16(digits, vdupq_n_s8('0'));
+
+  memcpy(buffer, &ascii, 16);
+
+  uint16x8_t is_zero = vceqzq_u8(digits);
+  uint64_t zeroes =
+      vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(is_zero, 4)), 0);
+
+  buffer += 16 - (__builtin_clzll(~zeroes) >> 2);
+  buffer -= (buffer - start == 1) ? 1 : 0;
+
+  return buffer;
+#endif  // __ARM_NEON__
 }
 
 struct fp {
