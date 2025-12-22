@@ -36,7 +36,8 @@ struct uint128 {
   }
 };
 
-[[maybe_unused]] auto operator+(uint128 lhs, uint128 rhs) noexcept -> uint128 {
+[[maybe_unused]] inline auto operator+(uint128 lhs, uint128 rhs) noexcept
+    -> uint128 {
 #if defined(_MSC_VER) && defined(_M_AMD64)
   uint64_t lo, hi;
   _addcarry_u64(_addcarry_u64(0, lhs.lo, rhs.lo, &lo), lhs.hi, rhs.hi, &hi);
@@ -805,7 +806,7 @@ inline auto digits2(size_t value) noexcept -> const char* {
   return &data[value * 2];
 }
 
-auto to_bcd8(uint64_t abcdefgh) -> uint64_t {
+auto to_bcd8(uint64_t abcdefgh) noexcept -> uint64_t {
   // An optimization from Xiang JunBo.
   // Three steps BCD.  Base 10000 -> base 100 -> base 10.
   // div and mod are evaluated simultaneously as, e.g.
@@ -865,7 +866,7 @@ struct fp {
 // Converts a binary FP number bin_sig * 2**bin_exp to the shortest decimal
 // representation.
 template <typename UInt>
-auto to_decimal(UInt bin_sig, int bin_exp, bool regular) -> fp {
+auto to_decimal(UInt bin_sig, int bin_exp, bool regular) noexcept -> fp {
   // Compute the decimal exponent as floor(log10(2**bin_exp)) if regular or
   // floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
   // log10_3_over_4_sig = round(log10(3/4) * 2**log10_2_exp)
