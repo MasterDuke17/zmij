@@ -856,8 +856,6 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
   return buffer + count_trailing_nonzeros(bcd);
 }
 
-constexpr int num_bits = sizeof(double) * CHAR_BIT;
-
 struct fp {
   uint64_t sig;
   int exp;
@@ -903,6 +901,7 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular) noexcept -> fp {
 
     // Switch to a fixed-point representation with the integral part in the
     // upper 4 bits and the rest being the fractional part.
+    constexpr int num_bits = sizeof(UInt) * CHAR_BIT;
     constexpr int num_integral_bits = 4;
     constexpr int num_fractional_bits = num_bits - num_integral_bits;
     constexpr UInt ten = UInt(10) << num_fractional_bits;
@@ -974,6 +973,7 @@ void to_string(double value, char* buffer) noexcept {
   uint bits = 0;
   memcpy(&bits, &value, sizeof(value));
 
+  constexpr int num_bits = sizeof(double) * CHAR_BIT;
   *buffer = '-';
   buffer += bits >> (num_bits - 1);
 
