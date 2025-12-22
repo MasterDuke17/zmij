@@ -9,4 +9,6 @@ target_compile_features(zmij PRIVATE ${ZMIJ_STANDARD})
 add_executable(example example.cc)
 target_link_libraries(example zmij)
 
+set(CMAKE_CTEST_ARGUMENTS "--output-on-failure")
+enable_testing()
 add_subdirectory(test)
