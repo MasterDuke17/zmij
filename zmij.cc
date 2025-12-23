@@ -1074,7 +1074,11 @@ template <typename Float> void to_string(Float value, char* buffer) noexcept {
   bin_exp -= num_sig_bits + exp_bias;
 
   auto [dec_sig, dec_exp] = to_decimal(bin_sig, bin_exp, regular);
-  int num_digits = 15 + (dec_sig >= uint(num_bits == 64 ? 1e16 : 1e8));
+  if constexpr (num_bits == 32) {
+    dec_sig *= 100000000;
+    dec_exp -= 8;
+  }
+  int num_digits = 15 + (dec_sig >= uint(1e16));
   dec_exp += num_digits;
 
   char* start = buffer;
