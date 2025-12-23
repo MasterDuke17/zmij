@@ -754,7 +754,7 @@ inline auto countl_zero(uint64_t x) noexcept -> int {
 #if defined(__has_builtin) && __has_builtin(__builtin_clzll)
   return __builtin_clzll(x);
 #elif defined(_MSC_VER) && defined(__AVX2__)
-  // Use lzcnt on MSVC only on AVX2-capable CPUs that have this BMI instruction.
+  // Use lzcnt only on AVX2-capable CPUs that have this BMI instruction.
   return __lzcnt64(x);
 #elif defined(_MSC_VER)
   unsigned long idx;
@@ -827,10 +827,9 @@ auto to_bcd8(uint64_t abcdefgh) noexcept -> uint64_t {
 
 // Writes a significand consisting of up to 17 decimal digits (16-17 for
 // normals) and removes trailing zeros.
-auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
+auto write_significand17(char* buffer, uint64_t value) noexcept -> char* {
 #ifndef __ARM_NEON__
-  // Each digits is denoted by a letter so value is abbccddeeffgghhii where
-  // digit a can be zero.
+  // Each digits is denoted by a letter so value is abbccddeeffgghhii.
   uint32_t abbccddee = uint32_t(value / 100'000'000);
   uint32_t ffgghhii = uint32_t(value % 100'000'000);
   uint32_t a = abbccddee / 100'000'000;
@@ -923,6 +922,25 @@ auto write_significand(char* buffer, uint64_t value) noexcept -> char* {
 
   return buffer;
 #endif  // __ARM_NEON__
+}
+
+// Writes a significand consisting of up to 9 decimal digits (8-9 for
+// normals) and removes trailing zeros.
+auto write_significand9(char* buffer, uint32_t value) noexcept -> char* {
+  // Each digits is denoted by a letter so value is abbccddee.
+  uint32_t a = value / 100'000'000;
+  uint32_t bbccddee = value % 100'000'000;
+
+  char* start = buffer;
+  *buffer = char('0' + a);
+  buffer += a != 0;
+
+  constexpr uint64_t zerobits = 0x30303030'30303030u;  // 0x30 == '0'
+  uint64_t bcd = to_bcd8(bbccddee);
+  uint64_t bits = bcd | zerobits;
+  memcpy(buffer, &bits, 8);
+  buffer += count_trailing_nonzeros(bcd);
+  return buffer - int(buffer - start == 1);
 }
 
 struct fp {
@@ -1075,7 +1093,7 @@ template <typename Float> void to_string(Float value, char* buffer) noexcept {
   if (num_bits == 64) {
     int num_digits = 15 + (dec_sig >= uint(1e16));
     dec_exp += num_digits;
-    buffer = write_significand(buffer + 1, dec_sig);
+    buffer = write_significand17(buffer + 1, dec_sig);
     if (subnormal) [[unlikely]] {
       char* p = start + 1;
       while (*p == '0') ++p;
@@ -1086,8 +1104,8 @@ template <typename Float> void to_string(Float value, char* buffer) noexcept {
       buffer -= buffer == start + 2;
     }
   } else {
-    dec_exp += 15 + (dec_sig >= uint(1e8));
-    buffer = write_significand(buffer + 1, dec_sig);
+    dec_exp += 7 + (dec_sig >= uint(1e8));
+    buffer = write_significand9(buffer + 1, dec_sig);
   }
 
   start[0] = start[1];
