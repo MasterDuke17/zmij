@@ -1108,6 +1108,7 @@ template <typename Float> void to_string(Float value, char* buffer) noexcept {
   buffer[2] = '\0';
 }
 
-template void to_string<double>(double value, char* buffer) noexcept;
+template void to_string(double value, char* buffer) noexcept;
+template void to_string(float value, char* buffer) noexcept;
 
 }  // namespace zmij::detail
