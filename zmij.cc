@@ -830,12 +830,14 @@ auto to_bcd8(uint64_t abcdefgh) noexcept -> uint64_t {
   return is_big_endian() ? a_b_c_d_e_f_g_h : bswap64(a_b_c_d_e_f_g_h);
 }
 
-inline char* write_if_nonzero(char* buffer, uint32_t digit) {
+inline auto write_if_nonzero(char* buffer, uint32_t digit) noexcept -> char* {
   *buffer = char('0' + digit);
   return buffer + (digit != 0);
 }
 
-inline void write8(char* buffer, uint64_t value) { memcpy(buffer, &value, 8); }
+inline void write8(char* buffer, uint64_t value) noexcept {
+  memcpy(buffer, &value, 8);
+}
 
 constexpr uint64_t zeros = 0x30303030'30303030u;  // 0x30 == '0'
 
