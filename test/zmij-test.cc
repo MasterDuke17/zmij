@@ -100,7 +100,7 @@ TEST(ftoa_test, normal) {
 }
 
 TEST(ftoa_test, subnormal) {
-  EXPECT_EQ(ftoa(std::numeric_limits<float>::denorm_min()), "0.0000001e-38");
+  EXPECT_EQ(ftoa(std::numeric_limits<float>::denorm_min()), "1e-45");
 }
 
 auto main(int argc, char** argv) -> int {

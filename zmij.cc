@@ -1050,15 +1050,15 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular) noexcept -> fp {
 
   uint64_t scaled_sig = umul192_upper64_inexact_to_odd(
       pow10_hi, pow10_lo, bin_sig_shifted << exp_shift);
-  uint64_t dec_sig_under = scaled_sig >> bound_shift;
-  uint64_t dec_sig_over = dec_sig_under + 1;
+  uint64_t dec_sig_below = scaled_sig >> bound_shift;
+  uint64_t dec_sig_above = dec_sig_below + 1;
 
-  // Pick the closest of dec_sig_under and dec_sig_over and check if it's in
+  // Pick the closest of dec_sig_below and dec_sig_above and check if it's in
   // the rounding interval.
-  int64_t cmp = int64_t(scaled_sig - ((dec_sig_under + dec_sig_over) << 1));
-  bool under_closer = cmp < 0 || (cmp == 0 && (dec_sig_under & 1) == 0);
-  bool under_in = (dec_sig_under << bound_shift) >= lower;
-  return {(under_closer & under_in) ? dec_sig_under : dec_sig_over, dec_exp};
+  int64_t cmp = int64_t(scaled_sig - ((dec_sig_below + dec_sig_above) << 1));
+  bool under_closer = cmp < 0 || (cmp == 0 && (dec_sig_below & 1) == 0);
+  bool under_in = (dec_sig_below << bound_shift) >= lower;
+  return {(under_closer & under_in) ? dec_sig_below : dec_sig_above, dec_exp};
 }
 
 }  // namespace
@@ -1100,22 +1100,23 @@ template <typename Float> void to_string(Float value, char* buffer) noexcept {
 
   auto [dec_sig, dec_exp] = to_decimal(bin_sig, bin_exp, regular);
   char* start = buffer;
+  int num_digits = std::numeric_limits<Float>::max_digits10 - 2;
   if (num_bits == 64) {
-    int num_digits = 15 + (dec_sig >= uint(1e16));
-    dec_exp += num_digits;
+    num_digits += (dec_sig >= uint(1e16));
     buffer = write_significand17(buffer + 1, dec_sig);
-    if (subnormal) [[unlikely]] {
-      char* p = start + 1;
-      while (*p == '0') ++p;
-      int num_zeros = int(p - (start + 1));
-      memcpy(start + 1, p, unsigned(num_digits - num_zeros + 1));
-      dec_exp -= num_zeros;
-      buffer -= num_zeros;
-      buffer -= buffer == start + 2;
-    }
   } else {
-    dec_exp += 7 + (dec_sig >= uint(1e8));
+    num_digits += (dec_sig >= uint(1e8));
     buffer = write_significand9(buffer + 1, dec_sig);
+  }
+  dec_exp += num_digits;
+  if (subnormal) [[unlikely]] {
+    char* p = start + 1;
+    while (*p == '0') ++p;
+    int num_zeros = int(p - (start + 1));
+    memcpy(start + 1, p, unsigned(num_digits - num_zeros + 1));
+    dec_exp -= num_zeros;
+    buffer -= num_zeros;
+    buffer -= buffer == start + 2;
   }
 
   start[0] = start[1];
