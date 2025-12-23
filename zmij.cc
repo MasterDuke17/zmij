@@ -751,22 +751,16 @@ inline auto is_big_endian() noexcept -> bool {
 }
 
 inline auto countl_zero(uint64_t x) noexcept -> int {
-#if defined(_MSC_VER) && defined(__AVX2__)
-  // use lzcnt on MSVC only on AVX2 capable CPU's that all have this BMI
-  // instruction
+#if defined(__has_builtin) && __has_builtin(__builtin_clzll)
+  return __builtin_clzll(x);
+#elif defined(_MSC_VER) && defined(__AVX2__)
+  // Use lzcnt on MSVC only on AVX2-capable CPUs that have this BMI instruction.
   return __lzcnt64(x);
 #elif defined(_MSC_VER)
-  // otherwise fallback to BSR instruction. Note that 0 is not allowed as input
-  // here
   unsigned long idx;
-  _BitScanReverse64(&idx, x);
+  _BitScanReverse64(&idx, x);  // Fallback to the BSR instruction.
   return 63 - idx;
-#elif __has_builtin(__builtin_clzll)
-  return __builtin_clzll(x);
 #else
-  // Unlike MSVC, clang and gcc recognize this implementation and replace
-  // it with the assembly instructions which are appropriate for the
-  // target (lzcnt or bsr + zero handling).
   int n = 64;
   for (; x > 0; x >>= 1) --n;
   return n;
@@ -774,10 +768,10 @@ inline auto countl_zero(uint64_t x) noexcept -> int {
 }
 
 inline auto bswap64(uint64_t x) noexcept -> uint64_t {
-#ifdef _MSC_VER
-  return _byteswap_uint64(x);
-#else
+#if defined(__has_builtin) && __has_builtin(__builtin_bswap64)
   return __builtin_bswap64(x);
+#else
+  return _byteswap_uint64(x);
 #endif
 }
 
