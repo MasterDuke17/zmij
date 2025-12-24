@@ -11,7 +11,7 @@
 #include "zmij.h"
 
 int main() {
-  char actual[zmij::double_buffer_size] = {};
+  char actual[zmij::float_buffer_size] = {};
   char expected[32] = {};
   uint32_t i = 0;
   double percent = 100.0 / (1LL << 32);
