@@ -1081,7 +1081,7 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
 
 namespace zmij::detail {
 
-template <typename Float> void to_string(Float value, char* buffer) noexcept {
+template <typename Float> void write(Float value, char* buffer) noexcept {
   static_assert(std::numeric_limits<Float>::is_iec559, "IEEE 754 required");
   constexpr int num_bits = std::numeric_limits<Float>::digits == 53 ? 64 : 32;
   using uint = std::conditional_t<num_bits == 64, uint64_t, uint32_t>;
@@ -1142,7 +1142,7 @@ template <typename Float> void to_string(Float value, char* buffer) noexcept {
   buffer[2] = '\0';
 }
 
-template void to_string(double value, char* buffer) noexcept;
-template void to_string(float value, char* buffer) noexcept;
+template void write(double value, char* buffer) noexcept;
+template void write(float value, char* buffer) noexcept;
 
 }  // namespace zmij::detail
