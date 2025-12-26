@@ -1093,7 +1093,8 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
 
 namespace zmij::detail {
 
-template <typename Float> size_t write(Float value, char* buffer) noexcept {
+template <typename Float>
+auto write(Float value, char* buffer) noexcept -> size_t {
   static_assert(std::numeric_limits<Float>::is_iec559, "IEEE 754 required");
   constexpr int num_bits = std::numeric_limits<Float>::digits == 53 ? 64 : 32;
   using uint = std::conditional_t<num_bits == 64, uint64_t, uint32_t>;
@@ -1116,7 +1117,8 @@ template <typename Float> size_t write(Float value, char* buffer) noexcept {
 
   bool subnormal = false;
   if (((bin_exp + 1) & exp_mask) <= 1) [[unlikely]] {
-    if (bin_exp != 0) return void(memcpy(buffer, !bin_sig ? "inf" : "nan", 4)), 3;
+    if (bin_exp != 0)
+      return void(memcpy(buffer, !bin_sig ? "inf" : "nan", 4)), 3;
     if (bin_sig == 0) return void(memcpy(buffer, "0", 2)), 1;
     // Handle subnormals.
     bin_sig |= implicit_bit;
@@ -1156,7 +1158,7 @@ template <typename Float> size_t write(Float value, char* buffer) noexcept {
   return buffer - buffer_start;
 }
 
-template size_t write(double value, char* buffer) noexcept;
-template size_t write(float value, char* buffer) noexcept;
+template auto write(double value, char* buffer) noexcept -> size_t;
+template auto write(float value, char* buffer) noexcept -> size_t;
 
 }  // namespace zmij::detail

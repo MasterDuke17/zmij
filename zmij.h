@@ -11,7 +11,8 @@
 
 namespace zmij {
 namespace detail {
-template <typename Float> size_t write(Float value, char* buffer) noexcept;
+template <typename Float>
+auto write(Float value, char* buffer) noexcept -> size_t;
 }  // namespace detail
 
 enum {
@@ -21,7 +22,7 @@ enum {
 
 /// Writes the shortest correctly rounded decimal representation of `value` to
 /// `out`. `out` should point to a buffer of size `n` or larger.
-inline size_t write(char* out, size_t n, double value) noexcept {
+inline auto write(char* out, size_t n, double value) noexcept -> size_t {
   if (n >= double_buffer_size) return detail::write(value, out);
   char buffer[double_buffer_size];
   size_t r = detail::write(value, buffer);
@@ -31,7 +32,7 @@ inline size_t write(char* out, size_t n, double value) noexcept {
 
 /// Writes the shortest correctly rounded decimal representation of `value` to
 /// `out`. `out` should point to a buffer of size `n` or larger.
-inline size_t write(char* out, size_t n, float value) noexcept {
+inline auto write(char* out, size_t n, float value) noexcept -> size_t {
   if (n >= float_buffer_size) return detail::write(value, out);
   char buffer[float_buffer_size];
   size_t r = detail::write(value, buffer);
