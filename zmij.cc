@@ -1029,8 +1029,8 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
 
   constexpr int num_bits = std::numeric_limits<UInt>::digits;
   if (regular & !subnormal) [[ZMIJ_LIKELY]] {
-    UInt integral = 0;
-    uint64_t fractional = 0;
+    UInt integral = 0;        // integral part of pow10 * bin_sig
+    uint64_t fractional = 0;  // fractional part of pow10 * bin_sig
     if (num_bits == 64) {
       auto [i, f] = umul192_upper128(pow10_hi, pow10_lo, bin_sig << exp_shift);
       integral = i;
