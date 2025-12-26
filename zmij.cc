@@ -1029,8 +1029,8 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
 
   constexpr int num_bits = std::numeric_limits<UInt>::digits;
   if (regular & !subnormal) [[ZMIJ_LIKELY]] {
-    UInt integral = 0;        // integral part of pow10 * bin_sig
-    uint64_t fractional = 0;  // fractional part of pow10 * bin_sig
+    UInt integral = 0;        // integral part of bin_sig * pow10
+    uint64_t fractional = 0;  // fractional part of bin_sig * pow10
     if (num_bits == 64) {
       auto [i, f] = umul192_upper128(pow10_hi, pow10_lo, bin_sig << exp_shift);
       integral = i;
@@ -1050,24 +1050,27 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
     // Fixed-point remainder of the scaled significand modulo 10.
     uint64_t rem10 =
         (digit << num_fractional_bits) | (fractional >> num_integral_bits);
+
+    // scaled_half_ulp = 1 * pow10 in the fixed-point format.
     // dec_exp is chosen so that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1).
-    // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after division
+    // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after scaling
     // by 10**dec_exp. Add 1 to combine the shift with division by two.
-    uint64_t half_ulp10 = pow10_hi >> (num_integral_bits - exp_shift + 1);
-    uint64_t upper = rem10 + half_ulp10;
+    uint64_t scaled_half_ulp = pow10_hi >> (num_integral_bits - exp_shift + 1);
+    uint64_t upper = rem10 + scaled_half_ulp;
 
     // An optimization from yy by Yaoyuan Guo:
     if (
         // Exact half-ulp tie when rounding to nearest integer.
         fractional != (uint64_t(1) << 63) &&
         // Exact half-ulp tie when rounding to nearest 10.
-        rem10 != half_ulp10 &&
+        rem10 != scaled_half_ulp &&
         // Near-boundary case for rounding to nearest 10.
         ten - upper > uint64_t(1)) [[ZMIJ_LIKELY]] {
       bool round = (upper >> num_fractional_bits) >= 10;
       uint64_t shorter = integral - digit + round * 10;
       uint64_t longer = integral + (fractional >= (uint64_t(1) << 63));
-      return {((rem10 <= half_ulp10) + round != 0) ? shorter : longer, dec_exp};
+      return {((rem10 <= scaled_half_ulp) + round != 0) ? shorter : longer,
+              dec_exp};
     }
   }
 
