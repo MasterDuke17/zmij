@@ -1066,10 +1066,10 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
         rem10 != scaled_half_ulp &&
         // Near-boundary case for rounding to nearest 10.
         ten - upper > uint64_t(1)) [[ZMIJ_LIKELY]] {
-      bool round = (upper >> num_fractional_bits) >= 10;
-      uint64_t shorter = integral - digit + round * 10;
+      bool round_up = (upper >> num_fractional_bits) >= 10;
+      uint64_t shorter = integral - digit + round_up * 10;
       uint64_t longer = integral + (fractional >= (uint64_t(1) << 63));
-      return {((rem10 <= scaled_half_ulp) + round != 0) ? shorter : longer,
+      return {((rem10 <= scaled_half_ulp) + round_up != 0) ? shorter : longer,
               dec_exp};
     }
   }
