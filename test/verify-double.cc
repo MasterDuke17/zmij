@@ -6,7 +6,9 @@
 #include <stdio.h>   // printf
 #include <string.h>  // memcpy
 
+#include <atomic>
 #include <thread>
+#include <vector>
 
 #include "../zmij.cc"
 #include "dragonbox/dragonbox.h"
