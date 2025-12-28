@@ -1057,18 +1057,19 @@ auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
     // by 10**dec_exp. Add 1 to combine the shift with division by two.
     uint64_t scaled_half_ulp = pow10_hi >> (num_integral_bits - exp_shift + 1);
     uint64_t upper = scaled_sig_mod10 + scaled_half_ulp;
+    constexpr uint64_t half_ulp = uint64_t(1) << 63;
 
     // An optimization from yy by Yaoyuan Guo:
     if (
         // Exact half-ulp tie when rounding to nearest integer.
-        fractional != (uint64_t(1) << 63) &&
+        fractional != half_ulp &&
         // Exact half-ulp tie when rounding to nearest 10.
         scaled_sig_mod10 != scaled_half_ulp &&
         // Near-boundary case for rounding to nearest 10.
-        ten - upper > uint64_t(1)) [[ZMIJ_LIKELY]] {
+        ten - upper > 1u) [[ZMIJ_LIKELY]] {
       bool round_up = upper >= ten;
       uint64_t shorter = integral - digit + round_up * 10;
-      uint64_t longer = integral + (fractional >= (uint64_t(1) << 63));
+      uint64_t longer = integral + (fractional >= half_ulp);
       bool use_shorter = (scaled_sig_mod10 <= scaled_half_ulp) + round_up != 0;
       return {use_shorter ? shorter : longer, dec_exp};
     }
