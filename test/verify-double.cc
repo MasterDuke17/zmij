@@ -102,18 +102,15 @@ auto main() -> int {
   constexpr int num_sig_bits = std::numeric_limits<double>::digits - 1;
   static constexpr uint64_t num_significands = uint64_t(1)
                                                << 32;  // test a subset
-  uint64_t bits = uint64_t(bin_exp_biased) << num_sig_bits;
 
   constexpr int num_exp_bits = 64 - num_sig_bits - 1;
   constexpr int exp_mask = (1 << num_exp_bits) - 1;
   constexpr int exp_bias = (1 << (num_exp_bits - 1)) - 1;
-  int bin_exp = bin_exp_biased;
+  if (((bin_exp_biased + 1) & exp_mask) <= 1) printf("Unsupported exponent\n");
 
-  if (((bin_exp + 1) & exp_mask) <= 1) {
-    printf("Unsupported exponent\n");
-  }
+  uint64_t bits = uint64_t(bin_exp_biased) << num_sig_bits;
   bits ^= implicit_bit;
-  bin_exp -= num_sig_bits + exp_bias;
+  constexpr int bin_exp = bin_exp_biased - (num_sig_bits + exp_bias);
 
   unsigned num_threads = std::thread::hardware_concurrency();
   std::vector<std::thread> threads(num_threads);
