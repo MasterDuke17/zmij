@@ -43,6 +43,15 @@ inline auto verify(uint64_t bits, int bin_exp) -> bool {
   int exp_shift = compute_exp_shift(bin_exp, dec_exp);
 
   constexpr int dec_exp_min = -292;
+  int pow10_index = -dec_exp - dec_exp_min;
+  int exact_begin = 292, exact_end = 347;
+  if (pow10_index >= exact_begin && pow10_index <= exact_end) {
+    assert(pow10_significands[exact_begin].hi == 0x8000000000000000);
+    assert(pow10_significands[exact_end].hi == 0xd0cf4b50cfe20765);
+    // Power of 10 is exact.
+    return true;
+  }
+
   auto [pow10_hi, pow10_lo] = pow10_significands[-dec_exp - dec_exp_min];
   // The real power of 10 is in the range [pow10, pow10 + 1), where
   // pow10 = ((pow10_hi << 64) | pow10_lo) * 2**(pow10_bin_exp - 127).
@@ -91,7 +100,8 @@ auto main() -> int {
   // Verify correctness for doubles with a given binary exponent.
   constexpr int bin_exp_biased = 1;
   constexpr int num_sig_bits = std::numeric_limits<double>::digits - 1;
-  static constexpr uint64_t num_significands = uint64_t(1) << 32;  // test a subset
+  static constexpr uint64_t num_significands = uint64_t(1)
+                                               << 32;  // test a subset
   uint64_t bits = uint64_t(bin_exp_biased) << num_sig_bits;
 
   constexpr int num_exp_bits = 64 - num_sig_bits - 1;
