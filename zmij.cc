@@ -1062,8 +1062,8 @@ auto normalize(zmij::fp dec, bool subnormal) noexcept -> zmij::fp {
 // Converts a binary FP number bin_sig * 2**bin_exp to the shortest decimal
 // representation.
 template <typename UInt>
-auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
-                bool subnormal) noexcept -> zmij::fp {
+ZMIJ_INLINE auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
+                            bool subnormal) noexcept -> zmij::fp {
   int dec_exp = compute_dec_exp(bin_exp, regular);
   int exp_shift = compute_exp_shift(bin_exp, dec_exp);
   auto [pow10_hi, pow10_lo] = pow10_significands[-dec_exp - dec_exp_min];
