@@ -1154,7 +1154,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
 
 namespace zmij {
 
-auto to_decimal(double value) noexcept -> dec_fp {
+inline auto to_decimal(double value) noexcept -> dec_fp {
   using traits = float_traits<double>;
   uint64_t bits = traits::to_bits(value);
   uint64_t bin_sig = traits::get_sig(bits);  // binary significand
