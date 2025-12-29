@@ -1160,8 +1160,8 @@ auto to_decimal(double value) noexcept -> fp {
   using traits = float_traits<double>;
   uint64_t bits = traits::to_bits(value);
   uint64_t bin_sig = traits::get_sig(bits);  // binary significand
+  int bin_exp = traits::get_exp(bits);       // binary exponent
   bool regular = bin_sig != 0;
-  int bin_exp = traits::get_exp(bits);  // binary exponent
   bool subnormal = false;
   if (((bin_exp + 1) & traits::exp_mask) <= 1) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) return {~0ull, 0};
@@ -1190,9 +1190,8 @@ auto write(Float value, char* buffer) noexcept -> char* {
   buffer += bits >> (traits::num_bits - 1);
 
   uint bin_sig = traits::get_sig(bits);  // binary significand
+  int bin_exp = traits::get_exp(bits);   // binary exponent
   bool regular = bin_sig != 0;
-
-  int bin_exp = traits::get_exp(bits);  // binary exponent
   bool subnormal = false;
   if (((bin_exp + 1) & traits::exp_mask) <= 1) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) {

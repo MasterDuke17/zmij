@@ -16,8 +16,8 @@ auto write(Float value, char* buffer) noexcept -> char*;
 }  // namespace detail
 
 struct fp {
-  unsigned long long sig;
-  int exp;
+  unsigned long long sig;  // significand
+  int exp;                 // exponent
 };
 
 /// Converts `value` into the shortest decimal representation `sig * 10**exp`.
