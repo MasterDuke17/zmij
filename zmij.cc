@@ -124,19 +124,19 @@ template <typename Float> struct float_traits : std::numeric_limits<Float> {
   static constexpr int exp_mask = (1 << num_exp_bits) - 1;
   static constexpr int exp_bias = (1 << (num_exp_bits - 1)) - 1;
 
-  using uint = std::conditional_t<num_bits == 64, uint64_t, uint32_t>;
-  static constexpr uint implicit_bit = uint(1) << num_sig_bits;
+  using sig_type = std::conditional_t<num_bits == 64, uint64_t, uint32_t>;
+  static constexpr sig_type implicit_bit = sig_type(1) << num_sig_bits;
 
-  static auto to_bits(Float value) noexcept -> uint {
+  static auto to_bits(Float value) noexcept -> sig_type {
     uint64_t bits;
     memcpy(&bits, &value, sizeof(value));
     return bits;
   }
 
-  static auto get_sig(uint bits) noexcept -> uint {
+  static auto get_sig(sig_type bits) noexcept -> sig_type {
     return bits & (implicit_bit - 1);
   }
-  static auto get_exp(uint bits) noexcept -> int {
+  static auto get_exp(sig_type bits) noexcept -> int {
     return int(bits >> num_sig_bits) & exp_mask;
   }
 };
@@ -1155,9 +1155,9 @@ namespace zmij {
 
 inline auto to_decimal(double value) noexcept -> dec_fp {
   using traits = float_traits<double>;
-  uint64_t bits = traits::to_bits(value);
-  uint64_t bin_sig = traits::get_sig(bits);  // binary significand
-  int bin_exp = traits::get_exp(bits);       // binary exponent
+  auto bits = traits::to_bits(value);
+  auto bin_sig = traits::get_sig(bits);  // binary significand
+  auto bin_exp = traits::get_exp(bits);  // binary exponent
   bool regular = bin_sig != 0;
   bool subnormal = false;
   if (((bin_exp + 1) & traits::exp_mask) <= 1) [[ZMIJ_UNLIKELY]] {
@@ -1181,14 +1181,13 @@ namespace detail {
 template <typename Float>
 auto write(Float value, char* buffer) noexcept -> char* {
   using traits = float_traits<Float>;
-  using uint = typename traits::uint;
-  uint bits = traits::to_bits(value);
+  auto bits = traits::to_bits(value);
 
   *buffer = '-';
   buffer += bits >> (traits::num_bits - 1);
 
-  uint bin_sig = traits::get_sig(bits);  // binary significand
-  int bin_exp = traits::get_exp(bits);   // binary exponent
+  auto bin_sig = traits::get_sig(bits);  // binary significand
+  auto bin_exp = traits::get_exp(bits);  // binary exponent
   bool regular = bin_sig != 0;
   bool subnormal = false;
   if (((bin_exp + 1) & traits::exp_mask) <= 1) [[ZMIJ_UNLIKELY]] {
@@ -1217,14 +1216,14 @@ auto write(Float value, char* buffer) noexcept -> char* {
   char* start = buffer;
   int num_digits = traits::max_digits10 - 2;
   if (traits::num_bits == 64) {
-    dec_exp += num_digits + (dec_sig >= uint(1e16));
+    dec_exp += num_digits + (dec_sig >= uint64_t(1e16));
     buffer = write_significand17(buffer + 1, dec_sig);
   } else {
-    if (dec_sig < uint(1e7)) [[ZMIJ_UNLIKELY]] {
+    if (dec_sig < uint32_t(1e7)) [[ZMIJ_UNLIKELY]] {
       dec_sig *= 10;
       --dec_exp;
     }
-    dec_exp += num_digits + (dec_sig >= uint(1e8));
+    dec_exp += num_digits + (dec_sig >= uint32_t(1e8));
     buffer = write_significand9(buffer + 1, dec_sig);
   }
   start[0] = start[1];
