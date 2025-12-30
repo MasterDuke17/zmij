@@ -1077,7 +1077,15 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int bin_exp, bool regular,
       integral = uint64_t(result >> 64);
       fractional = uint64_t(result);
     }
+#if ZMIJ_USE_INT128
+    // An optimization of integral % 10 by Dougall Johnson.
+    // Relies on range calculation: (max_bin_sig << max_exp_shift) * max_u128.
+    uint64_t div10 = (uint128_t(integral) * 0x199999999999999a) >> 64;
+    uint64_t digit = integral - div10 * 10;
+    asm("" : "+r"(digit)); // or it narrows to 32-bit and doesn't use madd/msub
+#else
     uint64_t digit = integral % 10;
+#endif
 
     // Switch to a fixed-point representation with the least significant
     // integral digit in the upper bits and fractional digits in the lower bits.
@@ -1230,8 +1238,9 @@ auto write(Float value, char* buffer) noexcept -> char* {
   start[1] = '.';
 
   // Write exponent.
-  *buffer++ = 'e';
-  *buffer++ = '-' + (dec_exp >= 0) * ('+' - '-');
+  uint16_t e_sign = dec_exp >= 0 ? ('+' << 8 | 'e') : ('-' << 8 | 'e');
+  memcpy(buffer, &e_sign, 2);
+  buffer += 2;
   int mask = (dec_exp >= 0) - 1;
   dec_exp = ((dec_exp + mask) ^ mask);  // absolute value
   if constexpr (traits::min_exponent10 < -99 || traits::max_exponent10 > 99) {
