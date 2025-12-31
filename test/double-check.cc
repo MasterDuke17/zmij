@@ -88,14 +88,14 @@ auto main() -> int {
   for (int exp = 0; exp < traits::exp_mask; ++exp) {
     if (!is_pow10_exact_for_bin_exp(debias(exp))) ++num_inexact_exponents;
   }
-  printf("Need to verify %d exponents\n", num_inexact_exponents);
+  printf("Need to verify %d binary exponents\n", num_inexact_exponents);
 
   // Verify correctness for doubles with a given binary exponent.
   constexpr int raw_exp = 1;
   constexpr int bin_exp = debias(raw_exp);
   if (raw_exp == 0 || raw_exp == traits::exp_mask)
     printf("Unsupported exponent\n");
-  printf("Verifying exponent %d (0x%03x)\n", bin_exp, raw_exp);
+  printf("Verifying binary exponent %d (0x%03x)\n", bin_exp, raw_exp);
 
   constexpr uint64_t num_significands = uint64_t(1) << 34;  // test a subset
 
@@ -127,7 +127,7 @@ auto main() -> int {
     if (bin_sig_begin == 0) ++bin_sig_begin;
     bin_sig_begin |= traits::implicit_bit;
     bin_sig_end |= traits::implicit_bit;
-    threads[i] = std::thread([i, bin_sig_begin, bin_sig_end, bin_exp,
+    threads[i] = std::thread([i, bin_sig_begin, bin_sig_end,
                               &num_processed_doubles, &num_special_cases,
                               &num_errors] {
       printf("Thread %d processing 0x%016llx - 0x%016llx\n", i,
@@ -135,7 +135,7 @@ auto main() -> int {
 
       uint64_t first_unreported = bin_sig_begin;
       auto last_update_time = std::chrono::steady_clock::now();
-      unsigned long long num_special_cases_local = 0;
+      unsigned long long num_current_special_cases = 0;
       constexpr double percent = 100.0 / num_significands;
 
       uint64_t scaled_sig_lo = pow10_lo * (bin_sig_begin << exp_shift);
@@ -170,11 +170,11 @@ auto main() -> int {
         bool carry = scaled_sig_lo + bin_sig_shifted < scaled_sig_lo;
         if (!carry) continue;
 
-        ++num_special_cases_local;
+        ++num_current_special_cases;
         if (!verify(exp_bits | bin_sig, bin_sig, bin_exp)) ++num_errors;
       }
       num_processed_doubles += bin_sig_end - first_unreported;
-      num_special_cases += num_special_cases_local;
+      num_special_cases += num_current_special_cases;
     });
   }
   for (int i = 0; i < num_threads; ++i) threads[i].join();
