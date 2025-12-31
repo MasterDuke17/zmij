@@ -33,8 +33,8 @@ int main() {
 
 ## Performance
 
-More than 3x faster than [Ryu](https://github.com/ulfjack/ryu) used by multiple
-C++ standard library implementations and ~2x faster than
+More than 3.5x faster than [Ryu](https://github.com/ulfjack/ryu) used by multiple
+C++ standard library implementations and ~2.5x faster than
 [Schubfach](https://github.com/vitaut/schubfach)
 on [dtoa-benchmark](https://github.com/fmtlib/dtoa-benchmark) run on Apple M1.
 
