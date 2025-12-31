@@ -91,16 +91,15 @@ auto main() -> int {
   printf("Need to verify %d exponents\n", num_inexact_exponents);
 
   // Verify correctness for doubles with a given binary exponent.
-  constexpr int bin_exp_biased = 1;
-  constexpr int bin_exp = debias(bin_exp_biased);
-  if (bin_exp_biased == 0 || bin_exp_biased == traits::exp_mask)
+  constexpr int raw_exp = 1;
+  constexpr int bin_exp = debias(raw_exp);
+  if (raw_exp == 0 || raw_exp == traits::exp_mask)
     printf("Unsupported exponent\n");
-  printf("Verifying exponent %d (0x%03x biased)\n", bin_exp, bin_exp_biased);
+  printf("Verifying exponent %d (0x%03x)\n", bin_exp, raw_exp);
 
   constexpr uint64_t num_significands = uint64_t(1) << 34;  // test a subset
 
-  constexpr uint64_t exp_bits = uint64_t(bin_exp_biased)
-                                << traits::num_sig_bits;
+  constexpr uint64_t exp_bits = uint64_t(raw_exp) << traits::num_sig_bits;
   constexpr int dec_exp = compute_dec_exp(bin_exp, true);
   constexpr int exp_shift = compute_exp_shift(bin_exp, dec_exp);
 
@@ -110,8 +109,7 @@ auto main() -> int {
     return 0;
   }
 
-  constexpr int pow10_index = -dec_exp;
-  constexpr uint64_t pow10_lo = pow10_significands[pow10_index].lo;
+  constexpr uint64_t pow10_lo = pow10_significands[-dec_exp].lo;
 
   unsigned num_threads = std::thread::hardware_concurrency();
   std::vector<std::thread> threads(num_threads);
