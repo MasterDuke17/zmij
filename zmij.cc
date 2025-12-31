@@ -258,8 +258,8 @@ constexpr struct pow10_significands_table {
     uint192 current = {0xe000000000000000, 0x25e8e89c13bb0f7a,
                        0xff77b1fcbebcdc4f};
     uint64_t ten = 0xa000000000000000;
-    for (int i = 0; i < 617; i++) {
-      data[i] = {current.w2, current.w1};
+    for (auto& datum : data) {
+      datum = {current.w2, current.w1};
 
       uint64_t h0 = umul128_upper64(current.w0, ten);
       uint64_t h1 = umul128_upper64(current.w1, ten);
