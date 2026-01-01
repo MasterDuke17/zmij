@@ -600,14 +600,12 @@ inline auto to_decimal(double value) noexcept -> dec_fp {
   auto bin_sig = traits::get_sig(bits);  // binary significand
   auto bin_exp = traits::get_exp(bits);  // binary exponent
   bool regular = bin_sig != 0;
-  bool subnormal = false;
-  if (((bin_exp + 1) & traits::exp_mask) <= 1) [[ZMIJ_UNLIKELY]] {
+  bool subnormal = ((bin_exp + 1) & traits::exp_mask) <= 1;
+  if (subnormal) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) return {0, int(~0u >> 1)};
     if (bin_sig == 0) return {0, 0};
-    // Handle subnormals.
     bin_sig |= traits::implicit_bit;
     bin_exp = 1;
-    subnormal = true;
     regular = true;
   }
   bin_sig ^= traits::implicit_bit;
@@ -634,8 +632,8 @@ auto write(Float value, char* buffer) noexcept -> char* {
 
   auto bin_sig = traits::get_sig(bits);  // binary significand
   bool regular = bin_sig != 0;
-  bool subnormal = false;
-  if (((raw_exp + 1) & traits::exp_mask) <= 1) [[ZMIJ_UNLIKELY]] {
+  bool subnormal = ((raw_exp + 1) & traits::exp_mask) <= 1;
+  if (subnormal) [[ZMIJ_UNLIKELY]] {
     if (raw_exp != 0) {
       memcpy(buffer, bin_sig == 0 ? "inf" : "nan", 4);
       return buffer + 3;
@@ -644,11 +642,9 @@ auto write(Float value, char* buffer) noexcept -> char* {
       memcpy(buffer, "0", 2);
       return buffer + 1;
     }
-    // Handle subnormals.
     bin_exp = 1 - traits::num_sig_bits - traits::exp_bias;
     dec_exp = compute_dec_exp(bin_exp, true);
     bin_sig |= traits::implicit_bit;
-    subnormal = true;
     // Setting regular is not redundant: it has a measurable perf impact.
     regular = true;
   }
