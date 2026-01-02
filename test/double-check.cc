@@ -95,8 +95,10 @@ auto main() -> int {
   // Verify correctness for doubles with a given binary exponent.
   constexpr int raw_exp = 1;
   constexpr int bin_exp = debias(raw_exp);
-  if (raw_exp == 0 || raw_exp == traits::exp_mask)
-    printf("Unsupported exponent\n");
+  if (raw_exp == 0 || raw_exp == traits::exp_mask) {
+    fprintf(stderr, "Unsupported exponent\n");
+    return 1;
+  }
   printf("Verifying binary exponent %d (0x%03x)\n", bin_exp, raw_exp);
 
   constexpr uint64_t num_significands = uint64_t(1) << 34;  // test a subset
@@ -164,7 +166,7 @@ auto main() -> int {
             n = find_min_n(d, uint128_t(1) << 64, threshold - start,
                            ~uint64_t() - start);
             if (n == not_found) {
-              printf("Failed to find the next hit\n");
+              fprintf(stderr, "Failed to find the next hit\n");
               exit(1);
             }
           }
@@ -203,7 +205,7 @@ auto main() -> int {
             ++bin_sig, scaled_sig_lo += scaled_step) {
           if ((bin_sig % (1 << 24)) == 0) [[unlikely]] {
             if (scaled_sig_lo != pow10_lo * (bin_sig << exp_shift)) {
-              printf("Sanity check failed\n");
+              fprintf(stderr, "Sanity check failed\n");
               exit(1);
             }
             num_processed_doubles += bin_sig - first_unreported;

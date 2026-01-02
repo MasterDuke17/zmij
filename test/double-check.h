@@ -12,21 +12,20 @@ inline auto find_min_n(uint64_t step, uint128_t mod, uint64_t lower,
 
   if (lower == 0) return 0;  // Current position is already a hit.
 
-  uint128_t step128 = step % mod;
-  if (step128 == 0) return not_found;
+  step = uint64_t(step % mod);
+  if (step == 0) return not_found;
 
   // Check for direct hit without wrapping.
-  uint128_t n = (lower + step128 - 1) / step128;
-  if (n * step128 <= upper) return uint64_t(n);
+  uint128_t n = (lower + step - 1) / step;
+  if (n * step <= upper) return uint64_t(n);
 
   // Euclidean recursion.
-  uint64_t res =
-      find_min_n(mod % step128, step128, (step128 - upper % step128) % step128,
-                 (step128 - lower % step128) % step128);
-  if (res == not_found) return not_found;
+  uint64_t result =
+      find_min_n(mod % step, step, (step - upper % step) % step,
+                 (step - lower % step) % step);
+  if (result == not_found) return not_found;
 
-  // Numerator can exceed 128 bits if not careful, but for m=2^64,
-  // uint128_t handles the intermediate (res * m + L + step128 - 1) before
-  // the / step128.
-  return uint64_t((uint128_t(res) * mod + lower + step128 - 1) / step128);
+  // Numerator can exceed 128 bits but for mod = 2**64, uint128_t handles the
+  // intermediate (resulr * m + L + step128 - 1) before the / step128.
+  return uint64_t((uint128_t(result) * mod + lower + step - 1) / step);
 }
