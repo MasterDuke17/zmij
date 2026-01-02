@@ -136,13 +136,14 @@ auto main() -> int {
       printf("Thread %d processing 0x%016llx - 0x%016llx\n", i, bin_sig_begin,
              (bin_sig_end - 1));
 
-      uint64_t first_unreported = bin_sig_begin;
+      uint64_t first_unreported = 0;
       auto last_update_time = std::chrono::steady_clock::now();
       unsigned long long num_current_special_cases = 0;
       constexpr double percent = 100.0 / num_significands;
 
       uint64_t scaled_sig_lo = pow10_lo * (bin_sig_begin << exp_shift);
       uint64_t scaled_step = pow10_lo * (1 << exp_shift);
+      uint64_t max_bin_sig_shifted = (bin_sig_end - 1) << exp_shift;
 
       // Finds all numbers greater or equal to 1**64 - max_bin_sig_shifted in
       // start + d * i sequence without enumerating the whole sequence.
@@ -150,7 +151,7 @@ auto main() -> int {
         uint64_t start = scaled_sig_lo;
         uint64_t d = scaled_step;
         uint64_t count = bin_sig_end - bin_sig_begin;
-        uint64_t threshold = ~uint64_t() - ((bin_sig_end - 1) << exp_shift) + 1;
+        uint64_t threshold = ~uint64_t() - max_bin_sig_shifted + 1;
         unsigned long long total_n = 0;
         int hits_found = 0;
 
@@ -162,7 +163,10 @@ auto main() -> int {
             // This range will never wrap because start < threshold.
             n = find_min_n(d, uint128_t(1) << 64, threshold - start,
                            ~uint64_t() - start);
-            if (n == not_found) break;
+            if (n == not_found) {
+              printf("Failed to find the next hit\n");
+              exit(1);
+            }
           }
 
           ++hits_found;
@@ -182,7 +186,17 @@ auto main() -> int {
 
           // Advance: To find the next hit, we must move at least one step.
           start = hit_val + d;
-          total_n += 1;
+          ++total_n;
+
+          num_processed_doubles += total_n - first_unreported;
+          first_unreported = total_n;
+          if (i == 0 && (hits_found % 100'000) == 0) {
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_update_time >= std::chrono::seconds(1)) {
+              last_update_time = now;
+              printf("Progress: %7.4f%%\n", num_processed_doubles * percent);
+            }
+          }
         }
       } else {
         for (uint64_t bin_sig = bin_sig_begin; bin_sig < bin_sig_end;
