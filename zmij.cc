@@ -401,12 +401,13 @@ auto write_significand17(char* buffer, uint64_t value) noexcept -> char* {
   char* start = buffer;
   buffer = write_if_nonzero(buffer, a);
 
-  uint64x1_t hundredmillions = {abbccddee | (uint64_t(ffgghhii) << 32)};
+  uint64x1_t hundredmillions64 = {abbccddee | (uint64_t(ffgghhii) << 32)};
+  uint64x1_t hundredmillions32 = vreinterpret_s32_u64(hundredmillions64);
 
   int32x2_t high_10000 =
-      vshr_n_u32(vqdmulh_n_s32(hundredmillions, c->multipliers32[0]), 9);
+      vshr_n_u32(vqdmulh_n_s32(hundredmillions32, c->multipliers32[0]), 9);
   int32x2_t tenthousands =
-      vmla_n_s32(hundredmillions, high_10000, c->multipliers32[1]);
+      vmla_n_s32(hundredmillions32, high_10000, c->multipliers32[1]);
 
   int32x4_t extended = vshll_n_u16(tenthousands, 0);
 
