@@ -4,8 +4,9 @@ using uint128_t = unsigned __int128;
 
 constexpr uint64_t not_found = ~uint64_t();
 
-// Finds the smallest n >= 0 such that (n * step) % mod is in [lower, upper].
-// This is a standard algorithm for linear congruential inequalities.
+// Finds the smallest n >= 0 such that (n * step) % mod is in [lower, upper],
+// where upper < mod, by solving a linear congruential inequality via
+// modular interval reduction.
 inline auto find_min_n(uint64_t step, uint128_t mod, uint64_t lower,
                        uint64_t upper) -> uint64_t {
   if (lower > upper) return not_found;
@@ -13,10 +14,10 @@ inline auto find_min_n(uint64_t step, uint128_t mod, uint64_t lower,
   if (step == 0) return not_found;
 
   // Check for direct hit without wrapping.
-  uint64_t n = 1 + (lower - 1) / step;
-  if (n * step <= upper) return n;
+  uint64_t n = (lower - 1) / step + 1;  // ceil(lower / step)
+  if (uint128_t(n) * step <= upper) return n;
 
-  // Euclidean recursion.
+  // Apply recursive modular interval reduction.
   n = find_min_n(mod % step, step, (step - upper % step) % step,
                  (step - lower % step) % step);
   if (n == not_found) return not_found;
