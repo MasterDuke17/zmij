@@ -144,7 +144,7 @@ auto main() -> int {
            ++bin_sig, scaled_sig_lo += scaled_inc) {
         if ((bin_sig % (1 << 24)) == 0) [[unlikely]] {
           if (scaled_sig_lo != pow10_lo * (bin_sig << exp_shift)) {
-            printf("Sanity check failed.\n");
+            printf("Sanity check failed\n");
             exit(1);
           }
           num_processed_doubles += bin_sig - first_unreported;
@@ -171,7 +171,8 @@ auto main() -> int {
         if (!carry) continue;
 
         ++num_current_special_cases;
-        if (!verify(exp_bits | bin_sig, bin_sig, bin_exp)) ++num_errors;
+        uint64_t bits = exp_bits | (bin_sig ^ traits::implicit_bit);
+        if (!verify(bits, bin_sig, bin_exp)) ++num_errors;
       }
       num_processed_doubles += bin_sig_end - first_unreported;
       num_special_cases += num_current_special_cases;
