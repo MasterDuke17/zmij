@@ -90,42 +90,38 @@ auto is_pow10_exact_for_bin_exp(int bin_exp) -> bool {
 }  // namespace
 
 auto main() -> int {
-  int num_inexact_exponents = 0;
-  for (int exp = 0; exp < traits::exp_mask; ++exp) {
-    if (!is_pow10_exact_for_bin_exp(debias(exp))) ++num_inexact_exponents;
-  }
-  printf("Need to verify %d binary exponents\n", num_inexact_exponents);
-
-  // Verify correctness for doubles with a given binary exponent.
+  // Verify correctness for doubles with a given binary exponent and
+  // the first num_significands significands.
   constexpr int raw_exp = 1;
+  constexpr uint64_t num_significands = uint64_t(1) << 36;
+
   constexpr int bin_exp = debias(raw_exp);
   if (raw_exp == 0 || raw_exp == traits::exp_mask) {
     fprintf(stderr, "Unsupported exponent\n");
     return 1;
   }
-  printf("Verifying binary exponent %d (0x%03x)\n", bin_exp, raw_exp);
+  int num_inexact_exponents = 0;
+  for (int exp = 0; exp < traits::exp_mask; ++exp) {
+    if (!is_pow10_exact_for_bin_exp(debias(exp))) ++num_inexact_exponents;
+  }
+  printf("Verifying binary exponent %d (0x%03x); %d total\n",
+         bin_exp, raw_exp, num_inexact_exponents);
 
-  constexpr uint64_t num_significands = uint64_t(1) << 36;  // test a subset
-
-  constexpr uint64_t exp_bits = uint64_t(raw_exp) << traits::num_sig_bits;
   constexpr int dec_exp = compute_dec_exp(bin_exp, true);
   constexpr int exp_shift = compute_exp_shift(bin_exp, dec_exp);
   printf("dec_exp=%d exp_shift=%d\n", dec_exp, exp_shift);
-
   if (is_pow10_exact_for_bin_exp(bin_exp)) {
-    printf("Power of 10 is exact for bin_exp=%d dec_exp=%d\n", bin_exp,
-           dec_exp);
+    printf("Power of 10 is exact for bin_exp=%d\n", bin_exp);
     return 0;
   }
 
-  constexpr uint64_t pow10_lo = pow10_significands[-dec_exp].lo;
-
   unsigned num_threads = std::thread::hardware_concurrency();
   std::vector<std::thread> threads(num_threads);
+  printf("Using %u threads\n", num_threads);
+  
   std::atomic<unsigned long long> num_processed_doubles(0);
   std::atomic<unsigned long long> num_special_cases(0);
   std::atomic<unsigned long long> num_errors(0);
-  printf("Using %u threads\n", num_threads);
 
   auto start = std::chrono::steady_clock::now();
   for (unsigned i = 0; i < num_threads; ++i) {
@@ -145,6 +141,10 @@ auto main() -> int {
       auto last_update_time = std::chrono::steady_clock::now();
       bool has_errors = false;
 
+      constexpr uint64_t pow10_lo = pow10_significands[-dec_exp].lo;
+      constexpr uint64_t exp_bits =
+        uint64_t(raw_exp) << traits::num_sig_bits ^ traits::implicit_bit;
+
       // With great power of 10 comes great responsibility to check the
       // approximation error. The exact power of 10 significand is in the range
       // [pow10, pow10 + 1), where pow10 = (pow10_hi << 64) | pow10_lo.
@@ -157,7 +157,7 @@ auto main() -> int {
           bin_sig_first, bin_sig_last,
           [&](uint64_t index) {
             uint64_t bin_sig = bin_sig_first + index;
-            uint64_t bits = exp_bits | (bin_sig ^ traits::implicit_bit);
+            uint64_t bits = exp_bits ^ bin_sig;
             if (!verify(bits, bin_sig, bin_exp, has_errors)) ++num_errors;
           },
           [&](uint64_t num_doubles) {
