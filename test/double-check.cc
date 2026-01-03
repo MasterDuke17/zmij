@@ -131,113 +131,31 @@ auto main() -> int {
     if (bin_sig_begin == 0) ++bin_sig_begin;
     bin_sig_begin |= traits::implicit_bit;
     bin_sig_end |= traits::implicit_bit;
-    threads[i] = std::thread([i, bin_sig_begin, bin_sig_end,
-                              &num_processed_doubles, &num_special_cases,
-                              &num_errors] {
-      printf("Thread %d processing 0x%016llx - 0x%016llx\n", i, bin_sig_begin,
-             (bin_sig_end - 1));
+    threads[i] =
+        std::thread([i, bin_sig_begin, bin_sig_end, &num_processed_doubles,
+                     &num_special_cases, &num_errors] {
+          printf("Thread %d processing 0x%016llx - 0x%016llx\n", i,
+                 bin_sig_begin, (bin_sig_end - 1));
 
-      uint64_t first_unreported = 0;
-      auto last_update_time = std::chrono::steady_clock::now();
-      unsigned long long num_current_special_cases = 0;
-      constexpr double percent = 100.0 / num_significands;
-
-      uint64_t scaled_sig_lo = pow10_lo * (bin_sig_begin << exp_shift);
-      constexpr uint64_t scaled_step = pow10_lo * (1 << exp_shift);
-      uint64_t max_bin_sig_shifted = (bin_sig_end - 1) << exp_shift;
-
-      // Finds all numbers greater or equal to 1**64 - max_bin_sig_shifted in
-      // start + d * i sequence without enumerating the whole sequence.
-      if (true) {
-        uint64_t start = scaled_sig_lo;
-        uint64_t count = bin_sig_end - bin_sig_begin;
-        uint64_t threshold = ~uint64_t() - max_bin_sig_shifted + 1;
-        unsigned long long total_n = 0;
-        int hits_found = 0;
-
-        for (;;) {
-          // If start is already above threshold, distance to hit is 0.
-          uint64_t n = 0;
-          if (start < threshold) {
-            // Target is [threshold - start, 2**64 - 1 - start].
-            // This range will never wrap because start < threshold.
-            n = find_min_n<scaled_step, uint128_t(1) << 64>(threshold - start,
-                           ~uint64_t() - start);
-            if (n == not_found) {
-              fprintf(stderr, "Failed to find the next hit\n");
-              exit(1);
-            }
-          }
-
-          ++hits_found;
-          total_n += n;
-          uint64_t hit_val = start + n * scaled_step;
-
-          ++num_current_special_cases;
-          uint64_t bin_sig = bin_sig_begin + total_n;
-          uint64_t bits = exp_bits | (bin_sig ^ traits::implicit_bit);
-          if (!verify(bits, bin_sig, bin_exp)) ++num_errors;
-
-          // Advance: To find the next hit, we must move at least one step.
-          start = hit_val + scaled_step;
-          ++total_n;
-
-          if (total_n >= count) {
-            printf("Fast check found %d special cases in %lld values\n",
-                   hits_found, total_n);
-            break;
-          }
-
-          if ((hits_found % 100'000) == 0) {
-            num_processed_doubles += total_n - first_unreported;
-            first_unreported = total_n;
-            if (i == 0) {
-              auto now = std::chrono::steady_clock::now();
-              if (now - last_update_time >= std::chrono::seconds(1)) {
-                last_update_time = now;
-                printf("Progress: %7.4f%%\n", num_processed_doubles * percent);
-              }
-            }
-          }
-        }
-      } else {
-        for (uint64_t bin_sig = bin_sig_begin; bin_sig < bin_sig_end;
-             ++bin_sig, scaled_sig_lo += scaled_step) {
-          if ((bin_sig % (1 << 24)) == 0) [[unlikely]] {
-            if (scaled_sig_lo != pow10_lo * (bin_sig << exp_shift)) {
-              fprintf(stderr, "Sanity check failed\n");
-              exit(1);
-            }
-            num_processed_doubles += bin_sig - first_unreported;
-            first_unreported = bin_sig;
-            if (i == 0) {
-              auto now = std::chrono::steady_clock::now();
-              if (now - last_update_time >= std::chrono::seconds(1)) {
-                last_update_time = now;
-                printf("Progress: %7.4f%%\n", num_processed_doubles * percent);
-              }
-            }
-          }
-
-          // The real power of 10 is in the range [pow10, pow10 + 1) ignoring
-          // the exponent, where pow10 = (pow10_hi << 64) | pow10_lo.
-
-          // Check for possible carry due to pow10 approximation error.
-          // This checks all cases where integral and fractional can be off in
-          // to_decimal. The rest is taken care of by the conservative boundary
-          // checks on the fast path.
-          uint64_t bin_sig_shifted = bin_sig << exp_shift;
-          // scaled_sig_lo = pow10_lo * bin_sig_shifted;
-          bool carry = scaled_sig_lo + bin_sig_shifted < scaled_sig_lo;
-          if (!carry) continue;
-
-          ++num_current_special_cases;
-          uint64_t bits = exp_bits | (bin_sig ^ traits::implicit_bit);
-          if (!verify(bits, bin_sig, bin_exp)) ++num_errors;
-        }
-      }
-      num_special_cases += num_current_special_cases;
-    });
+          auto last_update_time = std::chrono::steady_clock::now();
+          num_special_cases += find_carried_away_doubles<pow10_lo, exp_shift>(
+              bin_sig_begin, bin_sig_end,
+              [&](uint64_t index) {
+                uint64_t bin_sig = bin_sig_begin + index;
+                uint64_t bits = exp_bits | (bin_sig ^ traits::implicit_bit);
+                if (!verify(bits, bin_sig, bin_exp)) ++num_errors;
+              },
+              [&](uint64_t num_doubles) {
+                num_processed_doubles += num_doubles;
+                if (i != 0) return;
+                auto now = std::chrono::steady_clock::now();
+                if (now - last_update_time >= std::chrono::seconds(1)) {
+                  last_update_time = now;
+                  printf("Progress: %7.4f%%\n",
+                         num_processed_doubles * 100.0 / num_significands);
+                }
+              });
+        });
   }
   for (int i = 0; i < num_threads; ++i) threads[i].join();
   auto finish = std::chrono::steady_clock::now();
