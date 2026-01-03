@@ -151,16 +151,19 @@ auto main() -> int {
       // to_decimal. The rest is taken care of by the conservative boundary
       // checks on the fast path.
       bool has_errors = false;
+      uint64_t last_index = 0;
       num_special_cases += find_carried_away_doubles<pow10_lo, exp_shift>(
           bin_sig_first, bin_sig_last,
           [&](uint64_t index) {
+            if ((index % (1 << 20)) == 0) {
+              num_processed_doubles += index - last_index;
+              last_index = index;
+            }
             uint64_t bin_sig = bin_sig_first + index;
             uint64_t bits = exp_bits ^ bin_sig;
             if (!verify(bits, bin_sig, bin_exp, has_errors)) ++num_errors;
-          },
-          [&](uint64_t num_doubles) {
-            num_processed_doubles += num_doubles;
           });
+      num_processed_doubles += bin_sig_last - bin_sig_first - last_index + 1;
     };
     threads[i] = std::thread(fun);
   }

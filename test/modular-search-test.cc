@@ -80,8 +80,7 @@ TEST(modular_search_test, find_carried_away_doubles) {
   find_carried_away_doubles<pow10_lo, exp_shift>(
     bin_sig_begin, bin_sig_end, [&](uint64_t i) {
       actual.push_back(bin_sig_begin + i);
-    },
-    [](uint64_t) {}
+    }
   );
 
   EXPECT_EQ(expected.size(), 2048);
