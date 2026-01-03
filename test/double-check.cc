@@ -173,11 +173,6 @@ auto main() -> int {
           total_n += n;
           uint64_t hit_val = start + n * scaled_step;
 
-          if (total_n >= count) {
-            printf("Fast check found %d special cases in %lld values\n",
-                   hits_found, total_n);
-            break;
-          }
           ++num_current_special_cases;
           uint64_t bin_sig = bin_sig_begin + total_n;
           uint64_t bits = exp_bits | (bin_sig ^ traits::implicit_bit);
@@ -189,6 +184,13 @@ auto main() -> int {
 
           num_processed_doubles += total_n - first_unreported;
           first_unreported = total_n;
+
+          if (total_n >= count) {
+            printf("Fast check found %d special cases in %lld values\n",
+                   hits_found, total_n);
+            break;
+          }
+
           if (i == 0 && (hits_found % 100'000) == 0) {
             auto now = std::chrono::steady_clock::now();
             if (now - last_update_time >= std::chrono::seconds(1)) {
@@ -233,7 +235,6 @@ auto main() -> int {
           if (!verify(bits, bin_sig, bin_exp)) ++num_errors;
         }
       }
-      num_processed_doubles += bin_sig_end - first_unreported;
       num_special_cases += num_current_special_cases;
     });
   }
