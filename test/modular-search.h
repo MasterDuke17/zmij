@@ -34,16 +34,15 @@ inline auto find_min_n(uint64_t lower, uint64_t upper) noexcept -> uint64_t {
 // underestimate of a power of 10 without enumerating all doubles.
 template <uint64_t pow10_lo, int exp_shift, typename HitFun,
           typename ProgressFun>
-auto find_carried_away_doubles(uint64_t bin_sig_begin, uint64_t bin_sig_end,
+auto find_carried_away_doubles(uint64_t bin_sig_first, uint64_t bin_sig_last,
                                HitFun on_hit, ProgressFun on_progress) noexcept
     -> uint64_t {
-  uint64_t start = pow10_lo * (bin_sig_begin << exp_shift);
+  uint64_t start = pow10_lo * (bin_sig_first << exp_shift);
   constexpr uint64_t step = pow10_lo * (1 << exp_shift);
 
-  uint64_t max_bin_sig_shifted = (bin_sig_end - 1) << exp_shift;
-  uint64_t threshold = ~uint64_t() - max_bin_sig_shifted + 1;
+  uint64_t threshold = ~uint64_t() - (bin_sig_last << exp_shift) + 1;
 
-  uint64_t num_doubles = bin_sig_end - bin_sig_begin;
+  uint64_t num_doubles = bin_sig_last - bin_sig_first + 1;
   uint64_t double_count = 0;
   uint64_t last_double_count = 0;
   uint64_t hit_count = 0;

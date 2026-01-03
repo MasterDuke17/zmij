@@ -69,6 +69,7 @@ inline auto verify(uint64_t bits, uint64_t bin_sig, int bin_exp,
     return true;
 
   if (has_errors) return false;
+  has_errors = true;
   using ullong = unsigned long long;
   printf(
       "Output mismatch for %.17g (%llu * 2**%d): %llu * 10**%d != %llu * "
@@ -128,18 +129,18 @@ auto main() -> int {
 
   auto start = std::chrono::steady_clock::now();
   for (unsigned i = 0; i < num_threads; ++i) {
-    uint64_t bin_sig_begin = (num_significands * i / num_threads);
-    uint64_t bin_sig_end = (num_significands * (i + 1) / num_threads);
+    uint64_t bin_sig_first = (num_significands * i / num_threads);
+    uint64_t bin_sig_last = (num_significands * (i + 1) / num_threads) - 1;
 
     // Skip irregular because those are tested elsewhere.
-    if (bin_sig_begin == 0) ++bin_sig_begin;
-    bin_sig_begin |= traits::implicit_bit;
-    bin_sig_end |= traits::implicit_bit;
+    if (bin_sig_first == 0) ++bin_sig_first;
+    bin_sig_first |= traits::implicit_bit;
+    bin_sig_last |= traits::implicit_bit;
     threads[i] =
-        std::thread([i, bin_sig_begin, bin_sig_end, &num_processed_doubles,
+        std::thread([i, bin_sig_first, bin_sig_last, &num_processed_doubles,
                      &num_special_cases, &num_errors] {
           printf("Thread %d processing 0x%016llx - 0x%016llx\n", i,
-                 bin_sig_begin, (bin_sig_end - 1));
+                 bin_sig_first, bin_sig_last);
 
           auto last_update_time = std::chrono::steady_clock::now();
           bool has_errors = false;
@@ -152,9 +153,9 @@ auto main() -> int {
           // to_decimal. The rest is taken care of by the conservative boundary
           // checks on the fast path.
           num_special_cases += find_carried_away_doubles<pow10_lo, exp_shift>(
-              bin_sig_begin, bin_sig_end,
+              bin_sig_first, bin_sig_last,
               [&](uint64_t index) {
-                uint64_t bin_sig = bin_sig_begin + index;
+                uint64_t bin_sig = bin_sig_first + index;
                 uint64_t bits = exp_bits | (bin_sig ^ traits::implicit_bit);
                 if (!verify(bits, bin_sig, bin_exp, has_errors)) ++num_errors;
               },
