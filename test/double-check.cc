@@ -153,6 +153,8 @@ auto main(int argc, char** argv) -> int {
   // Verify correctness for doubles with a given binary exponent and
   // the first num_significands significands.
   // raw_exp=1 verified on commit 410dff3f with 13,220,633,789,575 hits.
+  // raw_exp=2 verified on commit 9946e53c with 26,441,267,578,985 hits.
+  // raw_exp=3 verified on commit 89933f51 with  3,312,278,778,759 hits.
   constexpr uint64_t num_significands = uint64_t(1) << 52;
 
   int bin_exp = debias(raw_exp);
