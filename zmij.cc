@@ -606,16 +606,16 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int bin_exp, int dec_exp,
 
   UInt scaled_sig = umul_upper_inexact_to_odd(pow10_hi, pow10_lo,
                                               bin_sig_shifted << exp_shift);
-  UInt dec_sig_below = scaled_sig >> bound_shift;
-  UInt dec_sig_above = dec_sig_below + 1;
+  UInt longer_below = scaled_sig >> bound_shift;
+  UInt longer_above = longer_below + 1;
 
   // Pick the closest of dec_sig_below and dec_sig_above and check if it's in
   // the rounding interval.
   using sint = std::make_signed_t<UInt>;
-  sint cmp = sint(scaled_sig - ((dec_sig_below + dec_sig_above) << 1));
-  bool below_closer = cmp < 0 || (cmp == 0 && (dec_sig_below & 1) == 0);
-  bool below_in = (dec_sig_below << bound_shift) >= lower;
-  UInt dec_sig = (below_closer & below_in) ? dec_sig_below : dec_sig_above;
+  sint cmp = sint(scaled_sig - ((longer_below + longer_above) << 1));
+  bool below_closer = cmp < 0 || (cmp == 0 && (longer_below & 1) == 0);
+  bool below_in = (longer_below << bound_shift) >= lower;
+  UInt dec_sig = (below_closer & below_in) ? longer_below : longer_above;
   return normalize<num_bits>({int64_t(dec_sig), dec_exp}, subnormal);
 }
 
