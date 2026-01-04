@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 using uint128_t = unsigned __int128;
 
@@ -34,8 +35,7 @@ inline auto find_min_n(uint64_t lower, uint64_t upper) noexcept -> uint64_t {
 // underestimate of a power of 10 without enumerating all doubles.
 template <uint64_t pow10_lo, int exp_shift, typename HitFun>
 auto find_carried_away_doubles(uint64_t bin_sig_first, uint64_t bin_sig_last,
-                               HitFun on_hit) noexcept
-    -> uint64_t {
+                               HitFun on_hit) noexcept -> uint64_t {
   uint64_t start = pow10_lo * (bin_sig_first << exp_shift);
   constexpr uint64_t step = pow10_lo * (1 << exp_shift);
 
