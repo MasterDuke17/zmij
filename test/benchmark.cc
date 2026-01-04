@@ -7,7 +7,8 @@
 #include <stdint.h>  // uint64_t
 #include <stdio.h>   // snprintf
 
-#include <charconv>  // std::from_chars
+#include <algorithm>  // std::sort
+#include <charconv>   // std::from_chars
 
 #include "fmt/base.h"
 
