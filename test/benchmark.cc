@@ -6,13 +6,14 @@
 
 #include <stdint.h>  // uint64_t
 #include <stdio.h>   // snprintf
+#include <stdlib.h>  // exit
 
 #include <algorithm>  // std::sort
 #include <charconv>   // std::from_chars
 
 #include "fmt/base.h"
 
-constexpr int num_trials = 3;
+constexpr int num_trials = 15;
 constexpr int max_digits = std::numeric_limits<double>::max_digits10;
 constexpr int num_iterations_per_digit = 1;
 constexpr int num_doubles_per_digit = 100'000;
@@ -63,47 +64,87 @@ auto get_random_digit_data(int digit) -> const double* {
 
 using duration = std::chrono::steady_clock::duration;
 
+auto to_ns(duration d) -> double {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(d).count();
+}
+
 struct digit_result {
-  double duration_ns = std::numeric_limits<double>::min();
+  double median_ns = std::numeric_limits<double>::min();
+  double mad_ns = std::numeric_limits<double>::min();
 };
 
 struct benchmark_result {
+  double aggregated_ns = 0;
   double min_ns = std::numeric_limits<double>::max();
   double max_ns = std::numeric_limits<double>::min();
   digit_result per_digit[max_digits + 1];
+  bool noisy = false;
 };
 
-// Modeled after https://github.com/fmtlib/dtoa-benchmark.
+// Modeled after https://github.com/fmtlib/dtoa-benchmark but using medians and
+// retries to be more robust to noise and avoid the downward bias of minima.
 auto bench_random_digit(void (*dtoa)(double, char*), const std::string& name)
     -> benchmark_result {
   char buffer[256] = {};
-  benchmark_result result;
-  for (int digit = 1; digit <= max_digits; ++digit) {
-    const double* data = get_random_digit_data(digit);
+  constexpr int num_retries = 15;
+  benchmark_result results[num_retries];
+  for (int retry = 0; retry < num_retries; ++retry) {
+    benchmark_result result;
+    for (int digit = 1; digit <= max_digits; ++digit) {
+      const double* data = get_random_digit_data(digit);
 
-    duration run_duration = duration::max();
-    for (int trial = 0; trial < num_trials; ++trial) {
-      auto start = std::chrono::steady_clock::now();
-      for (int iter = 0; iter < num_iterations_per_digit; ++iter) {
-        for (int i = 0; i < num_doubles_per_digit; ++i) dtoa(data[i], buffer);
+      duration durations[num_trials] = {};
+      for (int trial = 0; trial < num_trials; ++trial) {
+        auto start = std::chrono::steady_clock::now();
+        for (int iter = 0; iter < num_iterations_per_digit; ++iter) {
+          for (int i = 0; i < num_doubles_per_digit; ++i) dtoa(data[i], buffer);
+        }
+        auto finish = std::chrono::steady_clock::now();
+        durations[trial] = finish - start;
       }
-      auto finish = std::chrono::steady_clock::now();
 
-      // Pick the smallest of trial runs.
-      auto d = finish - start;
-      if (d < run_duration) run_duration = d;
+      // Compute the median, which estimates typical performance and avoids the
+      // systematic downward bias of using the minimum under one-sided timing
+      // noise (as in dtoa-benchmark).
+      static_assert(num_trials % 2 == 1);
+      std::sort(durations, durations + num_trials);
+      duration median_duration = durations[num_trials / 2];
+
+      // Compute absolute deviations from the median.
+      duration deviations[num_trials];
+      for (int i = 0; i < num_trials; ++i) {
+        auto d = durations[i] - median_duration;
+        deviations[i] = d < duration::zero() ? -d : d;
+      }
+
+      // Compute median of deviations (MAD).
+      std::sort(deviations, deviations + num_trials);
+      duration mad_duration = deviations[num_trials / 2];
+
+      double median_ns = to_ns(median_duration);
+      median_ns /= num_iterations_per_digit * num_doubles_per_digit;
+
+      double mad_ns = to_ns(mad_duration);
+      mad_ns /= num_iterations_per_digit * num_doubles_per_digit;
+      if (mad_ns / median_ns > 0.01) result.noisy = true;
+
+      result.per_digit[digit].median_ns = median_ns;
+      result.per_digit[digit].mad_ns = mad_ns;
+      if (median_ns < result.min_ns) result.min_ns = median_ns;
+      if (median_ns > result.max_ns) result.max_ns = median_ns;
     }
 
-    double ns =
-        std::chrono::duration_cast<std::chrono::nanoseconds>(run_duration)
-            .count();
-    ns /= num_iterations_per_digit * num_doubles_per_digit;
+    for (int i = 1; i <= max_digits; ++i)
+      result.aggregated_ns += result.per_digit[i].median_ns;
+    result.aggregated_ns /= max_digits;
 
-    result.per_digit[digit].duration_ns = ns;
-    if (ns < result.min_ns) result.min_ns = ns;
-    if (ns > result.max_ns) result.max_ns = ns;
+    results[retry] = result;
   }
-  return result;
+  std::sort(results, results + num_retries,
+            [](const benchmark_result& lhs, const benchmark_result& rhs) {
+              return lhs.aggregated_ns < rhs.aggregated_ns;
+            });
+  return results[num_retries / 2];
 }
 
 auto main() -> int {
@@ -111,9 +152,11 @@ auto main() -> int {
       methods.begin(), methods.end(),
       [](const method& lhs, const method& rhs) { return lhs.name < rhs.name; });
 
+  fmt::print("Mean of per-digit medians:\n");
   for (const method& m : methods) {
     benchmark_result result = bench_random_digit(m.dtoa, m.name);
-    fmt::print("{:9}: {:5.2f}..{:.2f}ns\n", m.name, result.min_ns,
-               result.max_ns);
+    fmt::print("{:9}: {:5.2f}ns ({:5.2f} - {:5.2f}ns) {}\n", m.name,
+               result.aggregated_ns, result.min_ns, result.max_ns,
+               result.noisy ? "noisy" : "");
   }
 }
