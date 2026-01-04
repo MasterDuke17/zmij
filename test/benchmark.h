@@ -8,17 +8,17 @@
 #include <string>
 #include <vector>
 
-struct test {
+struct method {
   std::string name;
   void (*dtoa)(double, char*);
 };
 
-extern std::vector<test> tests;
+extern std::vector<method> methods;
 
-#define REGISTER_TEST(f)                   \
-  static int register_##f = []() {         \
-    tests.push_back(test{#f, dtoa##_##f}); \
-    return 0;                              \
+#define REGISTER_METHOD(f)                     \
+  static int register_##f = []() {             \
+    methods.push_back(method{#f, dtoa##_##f}); \
+    return 0;                                  \
   }()
 
 #endif  // BENCHMARK_H_

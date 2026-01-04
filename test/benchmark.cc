@@ -16,7 +16,7 @@ constexpr int max_digits = std::numeric_limits<double>::max_digits10;
 constexpr int num_iterations_per_digit = 1;
 constexpr int num_doubles_per_digit = 100'000;
 
-std::vector<test> tests;
+std::vector<method> methods;
 
 // Random number generator from dtoa-benchmark.
 class rng {
@@ -105,12 +105,12 @@ auto bench_random_digit(void (*dtoa)(double, char*), const std::string& name)
 }
 
 auto main() -> int {
-  std::sort(tests.begin(), tests.end(), [](const test& lhs, const test& rhs) {
-    return lhs.name < rhs.name;
-  });
+  std::sort(
+      methods.begin(), methods.end(),
+      [](const method& lhs, const method& rhs) { return lhs.name < rhs.name; });
 
-  for (const test& t : tests) {
-    benchmark_result result = bench_random_digit(t.dtoa, t.name);
+  for (const method& m : methods) {
+    benchmark_result result = bench_random_digit(m.dtoa, m.name);
     for (int i = 1; i <= max_digits; ++i) {
       digit_result& dr = result.per_digit[i];
       fmt::print("{:2}: {:.2f}...{:.2f}ns\n", i, dr.min_ns, dr.max_ns);

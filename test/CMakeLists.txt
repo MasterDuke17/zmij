@@ -36,7 +36,7 @@ target_link_libraries(float-check dragonbox zmij)
 add_executable(benchmark benchmark.cc zmij-benchmark.cc fmt/format.cc)
 target_compile_features(benchmark PRIVATE ${ZMIJ_STANDARD})
 target_include_directories(benchmark PRIVATE .)
-target_link_libraries(benchmark zmij)
+target_link_libraries(benchmark dragonbox zmij)
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   add_executable(double-check double-check.cc)
