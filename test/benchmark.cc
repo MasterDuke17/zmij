@@ -2,41 +2,21 @@
 // Copyright (c) 2025 - present, Victor Zverovich
 // Distributed under the MIT license (see LICENSE).
 
+#include "benchmark.h"
+
 #include <stdint.h>  // uint64_t
 #include <stdio.h>   // snprintf
 
 #include <charconv>  // std::from_chars
-#include <string>    // std::string
-#include <vector>    // std::vector
 
 #include "fmt/base.h"
-
-struct test {
-  std::string name;
-  void (*dtoa)(double, char*);
-};
-
-std::vector<test> tests;
-
-#define REGISTER_TEST(f)                   \
-  static int register_##f = []() {         \
-    tests.push_back(test{#f, dtoa##_##f}); \
-    return 0;                              \
-  }()
-
-void dtoa_zmij(double, char*) {}
-
-REGISTER_TEST(zmij);
 
 constexpr int num_trials = 3;
 constexpr int max_digits = std::numeric_limits<double>::max_digits10;
 constexpr int num_iterations_per_digit = 1;
 constexpr int num_doubles_per_digit = 100'000;
 
-auto to_milliseconds(std::chrono::steady_clock::duration d) -> double {
-  using seconds = std::chrono::duration<double>;
-  return std::chrono::duration_cast<seconds>(d).count() * 1000;
-}
+std::vector<test> tests;
 
 // Random number generator from dtoa-benchmark.
 class rng {
@@ -91,6 +71,7 @@ struct benchmark_result {
   digit_result per_digit[max_digits + 1];
 };
 
+// Modeled after https://github.com/fmtlib/dtoa-benchmark.
 auto bench_random_digit(void (*dtoa)(double, char*), const std::string& name)
     -> benchmark_result {
   char buffer[256] = {};
@@ -132,7 +113,7 @@ auto main() -> int {
     benchmark_result result = bench_random_digit(t.dtoa, t.name);
     for (int i = 1; i <= max_digits; ++i) {
       digit_result& dr = result.per_digit[i];
-      fmt::print("{:2}: {:.2}...{:.2}ns\n", i, dr.min_ns, dr.max_ns);
+      fmt::print("{:2}: {:.2f}...{:.2f}ns\n", i, dr.min_ns, dr.max_ns);
     }
   }
 }
