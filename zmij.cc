@@ -27,17 +27,15 @@ struct dec_fp {
 #  define ZMIJ_USE_SIMD 1
 #endif
 
-#ifndef ZMIJ_USE_NEON
-#  if ZMIJ_USE_SIMD && \
-      (defined(__ARM_NEON) || (defined(_MSC_VER) && defined(_M_ARM64)))
-#    define ZMIJ_USE_NEON 1
-#  else
-#    define ZMIJ_USE_NEON 0
-#  endif
-#endif
-
-#if ZMIJ_USE_NEON
+#ifdef ZMIJ_USE_NEON
+// Use the provided definition.
+#elif !ZMIJ_USE_SIMD
+#  define ZMIJ_USE_NEON 0
+#elif defined(__ARM_NEON) || (defined(_MSC_VER) && defined(_M_ARM64))
 #  include <arm_neon.h>
+#  define ZMIJ_USE_NEON 1
+#else
+#  define ZMIJ_USE_NEON 0
 #endif
 
 #ifdef _MSC_VER
@@ -406,7 +404,7 @@ auto write_significand17(char* buffer, uint64_t value) noexcept -> char* {
   bcd = to_bcd8(ffgghhii);
   write8(buffer + 8, bcd | zeros);
   return buffer + 8 + count_trailing_nonzeros(bcd);
-#else  // ZMIJ_USE_NEON
+#else   // ZMIJ_USE_NEON
   // An optimized version for NEON by Dougall Johnson.
   struct to_string_constants {
     uint64_t mul_const = 0xabcc77118461cefd;
@@ -557,7 +555,8 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int bin_exp, int dec_exp,
     constexpr uint64_t half_ulp = uint64_t(1) << 63;
 
     // Exact half-ulp tie when rounding to nearest integer.
-    if (fractional == half_ulp) [[ZMIJ_UNLIKELY]] break;
+    if (fractional == half_ulp) [[ZMIJ_UNLIKELY]]
+      break;
 
 #if ZMIJ_USE_INT128
     // An optimization of integral % 10 by Dougall Johnson.
@@ -604,7 +603,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int bin_exp, int dec_exp,
     // s - shorter underestimate, S - shorter overestimate
     // l - longer underestimate,  L - longer overestimate
 
-    if (// Boundary case when rounding down to nearest 10.
+    if (  // Boundary case when rounding down to nearest 10.
         scaled_sig_mod10 != scaled_half_ulp &&
         // Near-boundary case when rounding up to nearest 10.
         // Case where upper != ten is insufficient: 1.342178e+08f.
@@ -680,8 +679,8 @@ inline auto to_decimal(double value) noexcept -> dec_fp {
   }
   bin_sig ^= traits::implicit_bit;
   bin_exp -= traits::num_sig_bits + traits::exp_bias;
-  auto dec = ::to_decimal(
-      bin_sig, bin_exp, compute_dec_exp(bin_exp, true), regular, special);
+  auto dec = ::to_decimal(bin_sig, bin_exp, compute_dec_exp(bin_exp, true),
+                          regular, special);
   return {traits::is_negative(bits) ? -dec.sig : dec.sig, dec.exp};
 }
 
