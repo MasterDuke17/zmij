@@ -378,11 +378,10 @@ constexpr exp_shift_table exp_shifts;
 // 10^dec_exp puts the decimal point in different bit positions:
 //   3 * 2**59 / 100 = 1.72...e+16  (needs shift = 1 + 1)
 //   3 * 2**60 / 100 = 3.45...e+16  (needs shift = 2 + 1)
-template <int num_bits>
-constexpr ZMIJ_INLINE auto compute_exp_shift(int bin_exp, int dec_exp,
-                                             bool regular) noexcept
+template <int num_bits, bool only_regular = false>
+constexpr ZMIJ_INLINE auto compute_exp_shift(int bin_exp, int dec_exp) noexcept
     -> unsigned char {
-  if (num_bits == 64 && exp_shift_table::enable && regular)
+  if (num_bits == 64 && exp_shift_table::enable && only_regular)
     return exp_shifts.data[bin_exp + exp_shift_table::offset];
   return do_compute_exp_shift(bin_exp, dec_exp);
 }
@@ -569,7 +568,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int bin_exp, int raw_exp,
   while (regular & !subnormal) {
     int dec_exp = compute_dec_exp(bin_exp, true);
     unsigned char exp_shift =
-        compute_exp_shift<num_bits>(bin_exp, dec_exp, true);
+        compute_exp_shift<num_bits, true>(bin_exp, dec_exp);
     uint128 pow10 = pow10_significands[-dec_exp];
 
     UInt integral = 0;        // integral part of bin_sig * pow10
@@ -650,8 +649,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int bin_exp, int raw_exp,
   }
 
   int dec_exp = compute_dec_exp(bin_exp, regular);
-  unsigned char exp_shift =
-      compute_exp_shift<num_bits>(bin_exp, dec_exp, regular);
+  unsigned char exp_shift = compute_exp_shift<num_bits>(bin_exp, dec_exp);
   uint128 pow10 = pow10_significands[-dec_exp];
 
   // Fallback to Schubfach to guarantee correctness in boundary cases.
