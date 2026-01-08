@@ -719,13 +719,13 @@ template <typename Float>
 auto write(Float value, char* buffer) noexcept -> char* {
   using traits = float_traits<Float>;
   auto bits = traits::to_bits(value);
-  // It is beneficial to compute exponent early.
+  // It is beneficial to extract exponent and significand early.
   auto bin_exp = traits::get_exp(bits);  // binary exponent
+  auto bin_sig = traits::get_sig(bits);  // binary significand
 
   *buffer = '-';
   buffer += traits::is_negative(bits);
 
-  auto bin_sig = traits::get_sig(bits);  // binary significand
   bool special = ((bin_exp + 1) & traits::exp_mask) <= 1;
   bool regular = (bin_sig != 0) | special;  // | special slightly improves perf.
   if (special) [[ZMIJ_UNLIKELY]] {
