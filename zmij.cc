@@ -558,7 +558,7 @@ auto normalize(zmij::dec_fp dec, bool subnormal) noexcept -> zmij::dec_fp {
 }
 
 // Converts a binary FP number bin_sig * 2**bin_exp to the shortest decimal
-// representation.
+// representation, where bin_exp = raw_exp - num_sig_bits - exp_bias.
 template <typename Float, typename UInt>
 ZMIJ_INLINE auto to_decimal(UInt bin_sig, int raw_exp, bool regular,
                             bool subnormal) noexcept -> zmij::dec_fp {
