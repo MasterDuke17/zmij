@@ -484,9 +484,10 @@ auto to_bcd8(uint64_t abcdefgh) noexcept -> uint64_t {
   return is_big_endian() ? a_b_c_d_e_f_g_h : bswap64(a_b_c_d_e_f_g_h);
 }
 
-inline auto write_if_nonzero(char* buffer, uint32_t digit) noexcept -> char* {
+inline auto write_if(char* buffer, uint32_t digit, bool condition) noexcept
+    -> char* {
   *buffer = char('0' + digit);
-  return buffer + (digit != 0);
+  return buffer + condition;
 }
 
 inline void write8(char* buffer, uint64_t value) noexcept {
@@ -495,7 +496,8 @@ inline void write8(char* buffer, uint64_t value) noexcept {
 
 // Writes a significand consisting of up to 17 decimal digits (16-17 for
 // normals) and removes trailing zeros.
-auto write_significand17(char* buffer, uint64_t value) noexcept -> char* {
+auto write_significand17(char* buffer, uint64_t value,
+                         bool has17digits) noexcept -> char* {
 #if ZMIJ_USE_NEON
   // An optimized version for NEON by Dougall Johnson.
   constexpr int32_t neg10k = -10000 + 0x10000;
@@ -528,7 +530,7 @@ auto write_significand17(char* buffer, uint64_t value) noexcept -> char* {
   uint64_t bbccddee = abbccddee - a * hundred_million;
 
   char* start = buffer;
-  buffer = write_if_nonzero(buffer, a);
+  buffer = write_if(buffer, a, has17digits);
 
   uint64x1_t ffgghhii_bbccddee_64 = {(uint64_t(ffgghhii) << 32) | bbccddee};
   int32x2_t bbccddee_ffgghhii = vreinterpret_s32_u64(ffgghhii_bbccddee_64);
@@ -570,7 +572,7 @@ auto write_significand17(char* buffer, uint64_t value) noexcept -> char* {
   uint32_t a = abbccddee / 100'000'000;
   uint32_t bbccddee = abbccddee % 100'000'000;
 
-  buffer = write_if_nonzero(buffer, a);
+  buffer = write_if(buffer, a, has17digits);
 
   alignas(64) static const struct {
     __m128i div10k = _mm_set1_epi64x(div10k_sig);
@@ -630,7 +632,7 @@ auto write_significand17(char* buffer, uint64_t value) noexcept -> char* {
   // Each digit is denoted by a letter so value is abbccddeeffgghhii.
   uint32_t abbccddee = uint32_t(value / 100'000'000);
   uint32_t ffgghhii = uint32_t(value % 100'000'000);
-  buffer = write_if_nonzero(buffer, abbccddee / 100'000'000);
+  buffer = write_if(buffer, abbccddee / 100'000'000, has17digits);
   uint64_t bcd = to_bcd8(abbccddee % 100'000'000);
   write8(buffer, bcd | zeros);
   if (ffgghhii == 0) {
@@ -645,9 +647,10 @@ auto write_significand17(char* buffer, uint64_t value) noexcept -> char* {
 
 // Writes a significand consisting of up to 9 decimal digits (7-9 for normals)
 // and removes trailing zeros.
-auto write_significand9(char* buffer, uint32_t value) noexcept -> char* {
+auto write_significand9(char* buffer, uint32_t value, bool has9digits) noexcept
+    -> char* {
   char* start = buffer;
-  buffer = write_if_nonzero(buffer, value / 100'000'000);
+  buffer = write_if(buffer, value / 100'000'000, has9digits);
   uint64_t bcd = to_bcd8(value % 100'000'000);
   write8(buffer, bcd | zeros);
   buffer += count_trailing_nonzeros(bcd);
@@ -857,15 +860,17 @@ auto write(Float value, char* buffer) noexcept -> char* {
   // Write significand.
   char* start = buffer;
   if (traits::num_bits == 64) {
-    dec_exp += traits::max_digits10 + (dec.sig >= uint64_t(1e16)) - 2;
-    buffer = write_significand17(buffer + 1, dec.sig);
+    bool has17digits = dec.sig >= uint64_t(1e16);
+    dec_exp += traits::max_digits10 - 2 + has17digits;
+    buffer = write_significand17(buffer + 1, dec.sig, has17digits);
   } else {
     if (dec.sig < uint32_t(1e7)) [[ZMIJ_UNLIKELY]] {
       dec.sig *= 10;
       --dec_exp;
     }
-    dec_exp += traits::max_digits10 + (dec.sig >= uint32_t(1e8)) - 2;
-    buffer = write_significand9(buffer + 1, dec.sig);
+    bool has9digits = dec.sig >= uint32_t(1e8);
+    dec_exp += traits::max_digits10 - 2 + has9digits;
+    buffer = write_significand9(buffer + 1, dec.sig, has9digits);
   }
   start[0] = start[1];
   start[1] = '.';
