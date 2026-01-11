@@ -886,9 +886,15 @@ auto write(Float value, char* buffer) noexcept -> char* {
     buffer[2] = '\0';
     return buffer + 2;
   }
-  // 19 is faster or equal to 12 even for 3 digits.
+
+#if defined(__APPLE__) && defined(__aarch64__) && ZMIJ_USE_INT128
+    // Use mulhi to divide by 100.
+    uint32_t digit = (uint128_t(dec_exp) * 0x290000000000000) >> 64;
+#else
+  // div100_exp=19 is faster or equal to 12 even for 3 digits.
   uint32_t digit =
       (uint32_t(dec_exp) * div100_sig) >> div100_exp;  // value / 100
+#endif
   uint32_t digit_with_nuls = '0' + digit;
   if (is_big_endian()) digit_with_nuls <<= 24;
   memcpy(buffer, &digit_with_nuls, 4);
