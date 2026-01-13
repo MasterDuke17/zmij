@@ -29,13 +29,14 @@ struct dec_fp {
 
 #ifdef _MSC_VER
 #  define ZMIJ_MSC_VER _MSC_VER
+#  include <intrin.h>  // __lzcnt64/_umul128/__umulh
 #else
 #  define ZMIJ_MSC_VER 0
 #endif
 
 #ifdef ZMIJ_USE_NEON
 // Use the provided definition
-#elif defined(__ARM_NEON) || (ZMIJ_MSC_VER && defined(_M_ARM64))
+#elif defined(__ARM_NEON) || defined(_M_ARM64)
 #  define ZMIJ_USE_NEON 1
 #else
 #  define ZMIJ_USE_NEON 0
@@ -45,8 +46,7 @@ struct dec_fp {
 // Use the provided definition
 #elif defined(__SSE2__)
 #  define ZMIJ_USE_SSE 1
-#elif ZMIJ_MSC_VER && \
-    (defined(_M_AMD64) || (defined(_M_IX86_FP) && _M_IX86FP == 2))
+#elif defined(_M_AMD64) || (defined(_M_IX86_FP) && _M_IX86FP == 2)
 #  define ZMIJ_USE_SSE 1
 #else
 #  define ZMIJ_USE_SSE 0
@@ -74,10 +74,6 @@ struct dec_fp {
 
 #if ZMIJ_USE_SSE
 #  include <immintrin.h>
-#endif
-
-#if ZMIJ_MSC_VER
-#  include <intrin.h>  // __lzcnt64/_umul128/__umulh
 #endif
 
 #if defined(__has_builtin) && !defined(ZMIJ_NO_BUILTINS)
@@ -156,10 +152,10 @@ inline auto clz(uint64_t x) noexcept -> int {
   assert(x != 0);
 #if ZMIJ_HAS_BUILTIN(__builtin_clzll)
   return __builtin_clzll(x);
-#elif ZMIJ_MSC_VER && defined(__AVX2__) && defined(_M_AMD64)
+#elif defined(__AVX2__) && defined(_M_AMD64)
   // Use lzcnt only on AVX2-capable CPUs that have this BMI instruction.
   return __lzcnt64(x);
-#elif ZMIJ_MSC_VER && (defined(_M_AMD64) || defined(_M_ARM64))
+#elif defined(_M_AMD64) || defined(_M_ARM64)
   unsigned long idx;
   _BitScanReverse64(&idx, x);  // Fallback to the BSR instruction.
   return 63 - idx;
@@ -197,14 +193,14 @@ struct uint128 {
 
 [[ZMIJ_MAYBE_UNUSED]] inline auto operator+(uint128 lhs, uint128 rhs) noexcept
     -> uint128 {
-#if ZMIJ_MSC_VER && defined(_M_AMD64)
+#ifdef _M_AMD64
   uint64_t lo, hi;
   _addcarry_u64(_addcarry_u64(0, lhs.lo, rhs.lo, &lo), lhs.hi, rhs.hi, &hi);
   return {hi, lo};
 #else
   uint64_t lo = lhs.lo + rhs.lo;
   return {lhs.hi + rhs.hi + (lo < lhs.lo), lo};
-#endif
+#endif  // _M_AMD64
 }
 
 #ifdef ZMIJ_USE_INT128
@@ -232,13 +228,13 @@ constexpr auto umul128(uint64_t x, uint64_t y) noexcept -> uint128_t {
 #if ZMIJ_USE_INT128
   return uint128_t(x) * y;
 #else
-#  if ZMIJ_MSC_VER && defined(_M_AMD64)
+#  if defined(_M_AMD64)
   if (!__builtin_is_constant_evaluated()) {
     uint64_t hi = 0;
     uint64_t lo = _umul128(x, y, &hi);
     return {hi, lo};
   }
-#  elif ZMIJ_MSC_VER && defined(_M_ARM64)
+#  elif defined(_M_ARM64)
   if (!__builtin_is_constant_evaluated()) return {__umulh(x, y), x * y};
 #  endif
   uint64_t a = x >> 32;
