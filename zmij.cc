@@ -56,7 +56,7 @@ struct dec_fp {
 static_assert(!ZMIJ_USE_SSE4_1 || ZMIJ_USE_SSE);
 #elif defined(__SSE4_1__) || defined(__AVX__)
 // On MSVC there's no way to check for SSE4.1 specifically so check __AVX__.
-#  define ZMIJ_USE_SSE4_1 ZMIJ_USE_SIMD
+#  define ZMIJ_USE_SSE4_1 ZMIJ_USE_SSE
 #else
 #  define ZMIJ_USE_SSE4_1 0
 #endif
