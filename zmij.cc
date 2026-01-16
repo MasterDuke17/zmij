@@ -358,7 +358,7 @@ struct pow10_significands_table {
     }
   }
 };
-constexpr pow10_significands_table pow10_significands;
+alignas(64) constexpr pow10_significands_table pow10_significands;
 
 // Computes the decimal exponent as floor(log10(2**bin_exp)) if regular or
 // floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
