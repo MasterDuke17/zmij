@@ -61,6 +61,12 @@ static_assert(!ZMIJ_USE_SSE4_1 || ZMIJ_USE_SSE);
 #  define ZMIJ_USE_SSE4_1 0
 #endif
 
+#ifdef __aarch64__
+#  define ZMIJ_AARCH64 1
+#else
+#  define ZMIJ_AARCH64 0
+#endif
+
 #ifdef _MSC_VER
 #  define ZMIJ_MSC_VER _MSC_VER
 #  include <intrin.h>  // __lzcnt64/_umul128/__umulh
@@ -300,12 +306,7 @@ template <typename Float> struct float_traits : std::numeric_limits<Float> {
 // 128-bit significands of powers of 10 rounded down.
 // Generated using 192-bit arithmetic method by Dougall Johnson.
 struct pow10_significands_table {
-#if __aarch64__
-  static constexpr bool split_tables = true;
-#else
-  static constexpr bool split_tables = false;
-#endif
-
+  static constexpr bool split_tables = ZMIJ_AARCH64 != 0;
   static constexpr int num_pow10 = 617;
   uint64_t data[num_pow10 * 2] = {};
 
@@ -771,10 +772,10 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp, bool regular,
     bool round_up = upper >= ten;
     int64_t shorter = int64_t(integral - digit);
     int64_t longer = int64_t(integral + (cmp >= 0));
-#ifdef __aarch64__  // Faster version without ccmp.
-    int64_t dec_sig = scaled_sig_mod10 < scaled_half_ulp ? shorter : longer;
-    return {round_up ? shorter + 10 : dec_sig, dec_exp};
-#endif
+    if (ZMIJ_AARCH64) {  // Faster version without ccmp.
+      int64_t dec_sig = scaled_sig_mod10 < scaled_half_ulp ? shorter : longer;
+      return {round_up ? shorter + 10 : dec_sig, dec_exp};
+    }
     shorter += round_up * 10;
     bool use_shorter = (scaled_sig_mod10 <= scaled_half_ulp) + round_up != 0;
     return {use_shorter ? shorter : longer, dec_exp};
