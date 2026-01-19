@@ -661,7 +661,7 @@ auto write_significand17(char* buffer, uint64_t value,
 
   // determine number of leading zeros
   __m128i mask128 = _mm_cmpgt_epi8(bcd, _mm_setzero_si128());
-  uint16_t mask = _mm_movemask_epi8(mask128);
+  uint32_t mask = _mm_movemask_epi8(mask128);
   // We don't need a zero-check here: if the mask were zero, either the
   // significand is zero which is handled elsewhere or the only non-zero digit
   // is the last digit which we factored off. But in that case the number would
