@@ -387,15 +387,12 @@ constexpr ZMIJ_INLINE auto do_compute_exp_shift(int bin_exp,
 }
 
 struct exp_shift_table {
-  using traits = float_traits<double>;
   static constexpr bool enable = true;
-  static constexpr int num_exps = traits::exp_mask + 1;
-  unsigned char data[enable ? num_exps : 1] = {};
+  unsigned char data[enable ? float_traits<double>::exp_mask + 1 : 1] = {};
 
   constexpr exp_shift_table() {
-    if (!enable) return;
-    for (int raw_exp = 0; raw_exp < num_exps; ++raw_exp) {
-      int bin_exp = raw_exp - traits::exp_offset;
+    for (int raw_exp = 0; raw_exp < sizeof(data) && enable; ++raw_exp) {
+      int bin_exp = raw_exp - float_traits<double>::exp_offset;
       if (raw_exp == 0) ++bin_exp;
       int dec_exp = compute_dec_exp(bin_exp, true);
       data[raw_exp] = do_compute_exp_shift(bin_exp, dec_exp);
@@ -494,23 +491,11 @@ inline void write8(char* buffer, uint64_t value) noexcept {
   memcpy(buffer, &value, 8);
 }
 
-struct m128i_t {
-  long long data[2];
-};
-
-#if ZMIJ_USE_SSE
-using m128i = std::conditional_t<ZMIJ_MSC_VER == 0, __m128i, m128i_t>;
-#else
-using m128i = m128i_t;
-#endif
-
-constexpr auto splat64(uint64_t x) -> m128i {
-  return m128i{static_cast<long long>(x), static_cast<long long>(x)};
-}
-constexpr auto splat32(uint32_t x) -> m128i {
+constexpr auto splat64(uint64_t x) -> uint128 { return uint128{x, x}; }
+constexpr auto splat32(uint32_t x) -> uint128 {
   return splat64(uint64_t(x) << 32 | x);
 }
-constexpr auto splat16(uint16_t x) -> m128i {
+constexpr auto splat16(uint16_t x) -> uint128 {
   return splat32(uint32_t(x) << 16 | x);
 }
 constexpr auto pack8(uint8_t a, uint8_t b, uint8_t c, uint8_t d,  //
@@ -624,35 +609,36 @@ auto write_significand17(char* buffer, uint64_t value, bool has17digits,
   uint32_t ijklmnop = value_div10 % uint64_t(1e8);
 
   alignas(64) static constexpr struct {
-    m128i div10k = splat64(div10k_sig);
-    m128i neg10k = splat64(::neg10k);
-    m128i div100 = splat32(div100_sig);
-    m128i div10 = splat16((1 << 16) / 10 + 1);
+    uint128 div10k = splat64(div10k_sig);
+    uint128 neg10k = splat64(::neg10k);
+    uint128 div100 = splat32(div100_sig);
+    uint128 div10 = splat16((1 << 16) / 10 + 1);
 #  if ZMIJ_USE_SSE4_1
-    m128i neg100 = splat32(::neg100);
-    m128i neg10 = splat16((1 << 8) - 10);
-    m128i bswap = m128i{pack8(15, 14, 13, 12, 11, 10, 9, 8),
-                        pack8(7, 6, 5, 4, 3, 2, 1, 0)};
+    uint128 neg100 = splat32(::neg100);
+    uint128 neg10 = splat16((1 << 8) - 10);
+    uint128 bswap = uint128{pack8(15, 14, 13, 12, 11, 10, 9, 8),
+                            pack8(7, 6, 5, 4, 3, 2, 1, 0)};
 #  else
-    m128i hundred = splat32(100);
-    m128i moddiv10 = splat16(10 * (1 << 8) - 1);
+    uint128 hundred = splat32(100);
+    uint128 moddiv10 = splat16(10 * (1 << 8) - 1);
 #  endif
-    m128i zeros = splat64(::zeros);
+    uint128 zeros = splat64(::zeros);
   } consts;
 
-  const __m128i div10k = _mm_load_si128((const __m128i*)&consts.div10k);
-  const __m128i neg10k = _mm_load_si128((const __m128i*)&consts.neg10k);
-  const __m128i div100 = _mm_load_si128((const __m128i*)&consts.div100);
-  const __m128i div10 = _mm_load_si128((const __m128i*)&consts.div10);
+  using ptr = const __m128i*;
+  const __m128i div10k = _mm_load_si128(ptr(&consts.div10k));
+  const __m128i neg10k = _mm_load_si128(ptr(&consts.neg10k));
+  const __m128i div100 = _mm_load_si128(ptr(&consts.div100));
+  const __m128i div10 = _mm_load_si128(ptr(&consts.div10));
 #  if ZMIJ_USE_SSE4_1
-  const __m128i neg100 = _mm_load_si128((const __m128i*)&consts.neg100);
-  const __m128i neg10 = _mm_load_si128((const __m128i*)&consts.neg10);
-  const __m128i bswap = _mm_load_si128((const __m128i*)&consts.bswap);
+  const __m128i neg100 = _mm_load_si128(ptr(&consts.neg100));
+  const __m128i neg10 = _mm_load_si128(ptr(&consts.neg10));
+  const __m128i bswap = _mm_load_si128(ptr(&consts.bswap));
 #  else
-  const __m128i hundred = _mm_load_si128((const __m128i*)&consts.hundred);
-  const __m128i moddiv10 = _mm_load_si128((const __m128i*)&consts.moddiv10);
+  const __m128i hundred = _mm_load_si128(ptr(&consts.hundred));
+  const __m128i moddiv10 = _mm_load_si128(ptr(&consts.moddiv10));
 #  endif
-  const __m128i zeros = _mm_load_si128((const __m128i*)&consts.zeros);
+  const __m128i zeros = _mm_load_si128(ptr(&consts.zeros));
 
   // The BCD sequences are based on ones provided by Xiang JunBo.
   __m128i x = _mm_set_epi64x(abcdefgh, ijklmnop);
@@ -964,7 +950,7 @@ auto write(Float value, char* buffer) noexcept -> char* {
   memcpy(buffer, &e_sign, 2);
   buffer += 2;
   dec_exp = dec_exp >= 0 ? dec_exp : -dec_exp;
-  if (traits::min_exponent10 >= -99 && traits::max_exponent10 <= 99) {
+  if (traits::min_exponent10 > -100 && traits::max_exponent10 < 100) {
     memcpy(buffer, digits2(dec_exp), 2);
     buffer[2] = '\0';
     return buffer + 2;
