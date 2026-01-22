@@ -41,32 +41,29 @@ https://github.com/google/double-conversion) and ~2.5x faster than
 [Schubfach](https://github.com/vitaut/schubfach)
 on [dtoa-benchmark](https://github.com/fmtlib/dtoa-benchmark) run on Apple M1.
 
-
-| Function           | Time (ns) | Speedup |
-|--------------------|----------:|--------:|
-| ostringstream      | 870.478   | 1.00x   |
-| sprintf            | 734.033   | 1.19x   |
-| double-conversion  | 82.903    | 10.50x  |
-| to_chars           | 42.537    | 20.46x  |
-| ryu                | 36.805    | 23.65x  |
-| schubfach          | 24.653    | 35.31x  |
-| fmt                | 22.201    | 39.21x  |
-| dragonbox          | 20.544    | 42.37x  |
-| yy                 | 13.963    | 62.34x  |
-| xjb64              | 10.500    | 82.90x  |
-| zmij               | 8.895     | 97.87x  |
-| null               | 0.929     | 936.55x |
+| Function          | Time (ns) | Speedup |
+|-------------------|----------:|--------:|
+| ostringstream     | 871.431   | 1.00x   |
+| sprintf           | 735.292   | 1.19x   |
+| double-conversion | 83.332    | 10.46x  |
+| to_chars          | 42.808    | 20.36x  |
+| ryu               | 36.809    | 23.67x  |
+| schubfach         | 24.721    | 35.25x  |
+| fmt               | 22.224    | 39.21x  |
+| dragonbox         | 20.532    | 42.44x  |
+| yy                | 14.006    | 62.22x  |
+| xjb64             | 10.542    | 82.66x  |
+| zmij              | 8.661     | 100.62x |
+| null              | 0.946     | 921.13x |
 
 **Conversion time (smaller is better):**
 
-<img width="816" height="358" alt="image"
-  src="https://github.com/user-attachments/assets/c6eea19d-f824-4069-bc26-d701a419916e" />
+<img width="726" height="313" alt="image" src="https://github.com/user-attachments/assets/c36c95c6-52a1-42a9-880e-d7621112f7d9" />
 
 `ostringstream` and `sprintf` are excluded due to their significantly slower
 performance.
 
-<img width="857" height="687" alt="image"
-  src="https://github.com/user-attachments/assets/13cb86d3-4d76-4903-a13e-d4845a4388b4" />
+<img width="739" height="605" alt="image" src="https://github.com/user-attachments/assets/e6452189-5a4c-4ba2-9e17-f720e263dd5d" />
 
 On EPYC Milan (AMD64) running Linux, Żmij is approximately **2.8× faster than Ryū** and
 **5× faster than double-conversion** when compiled with GCC 11.5.
