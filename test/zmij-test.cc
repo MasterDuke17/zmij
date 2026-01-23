@@ -161,14 +161,24 @@ TEST(dtoa_test, to_decimal) {
   EXPECT_EQ(dec.sig, 66260701500000000);
   EXPECT_EQ(dec.exp, -50);
   EXPECT_EQ(dec.negative, false);
+
   dec = zmij::to_decimal(-6.62607015e-34);
   EXPECT_EQ(dec.sig, 66260701500000000);
   EXPECT_EQ(dec.exp, -50);
   EXPECT_EQ(dec.negative, true);
+
   dec = zmij::to_decimal(-0.0);
   EXPECT_EQ(dec.sig, 0);
   EXPECT_EQ(dec.exp, 0);
   EXPECT_EQ(dec.negative, true);
+
+  uint32_t garlic = 0;
+  memcpy(&garlic, "🧄", 4);
+  uint64_t bits = 0x7FF0000000000000 | garlic;
+  double garlic_nan = 0;
+  memcpy(&garlic_nan, &bits, sizeof(bits));
+  dec = zmij::to_decimal(garlic_nan);
+  EXPECT_EQ(dec.sig, garlic);
 }
 #endif
 

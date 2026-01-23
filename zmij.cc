@@ -877,7 +877,7 @@ inline auto to_decimal(double value) noexcept -> dec_fp {
   auto negative = traits::is_negative(bits);
   to_decimal_result dec;
   if (bin_exp == 0 || bin_exp == traits::exp_mask) [[ZMIJ_UNLIKELY]] {
-    if (bin_exp != 0) return {0, int(~0u >> 1), negative};
+    if (bin_exp != 0) return {int64_t(bin_sig), int(~0u >> 1), negative};
     if (bin_sig == 0) return {0, 0, negative};
     dec = to_decimal_schubfach(bin_sig, 1 - traits::exp_offset, true);
   } else {
