@@ -11,6 +11,7 @@ namespace zmij {
 struct dec_fp {
   long long sig;
   int exp;
+  bool negative;
 };
 }  // namespace zmij
 #endif
@@ -875,15 +876,14 @@ inline auto to_decimal(double value) noexcept -> dec_fp {
   auto bin_exp = traits::get_exp(bits);  // binary exponent
   auto bin_sig = traits::get_sig(bits);  // binary significand
   auto negative = traits::is_negative(bits);
-  to_decimal_result dec;
   if (bin_exp == 0 || bin_exp == traits::exp_mask) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) return {int64_t(bin_sig), int(~0u >> 1), negative};
     if (bin_sig == 0) return {0, 0, negative};
-    dec = to_decimal_schubfach(bin_sig, 1 - traits::exp_offset, true);
-  } else {
-    dec = to_decimal_normal<double>(bin_sig | traits::implicit_bit, bin_exp,
-                                    bin_sig != 0);
+    bin_exp = 1;
+    bin_sig |= traits::implicit_bit;
   }
+  auto dec = to_decimal_normal<double>(bin_sig ^ traits::implicit_bit, bin_exp,
+                                       bin_sig != 0);
   return {dec.sig, dec.exp, negative};
 }
 
