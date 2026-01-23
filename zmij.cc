@@ -453,9 +453,11 @@ inline auto digits2(size_t value) noexcept -> const char* {
 constexpr int div10k_exp = 40;
 constexpr uint32_t div10k_sig = uint32_t((1ull << div10k_exp) / 10000 + 1);
 constexpr uint32_t neg10k = uint32_t((1ull << 32) - 10000);
+
 constexpr int div100_exp = 19;
 constexpr uint32_t div100_sig = (1 << div100_exp) / 100 + 1;
 constexpr uint32_t neg100 = (1 << 16) - 100;
+
 constexpr int div10_exp = 10;
 constexpr uint32_t div10_sig = (1 << div10_exp) / 10 + 1;
 constexpr uint32_t neg10 = (1 << 8) - 10;
@@ -489,20 +491,6 @@ inline auto write_if(char* buffer, uint32_t digit, bool condition) noexcept
 
 inline void write8(char* buffer, uint64_t value) noexcept {
   memcpy(buffer, &value, 8);
-}
-
-constexpr auto splat64(uint64_t x) -> uint128 { return uint128{x, x}; }
-constexpr auto splat32(uint32_t x) -> uint128 {
-  return splat64(uint64_t(x) << 32 | x);
-}
-constexpr auto splat16(uint16_t x) -> uint128 {
-  return splat32(uint32_t(x) << 16 | x);
-}
-constexpr auto pack8(uint8_t a, uint8_t b, uint8_t c, uint8_t d,  //
-                     uint8_t e, uint8_t f, uint8_t g, uint8_t h) -> uint64_t {
-  using u64 = uint64_t;
-  return u64(h) << 56 | u64(g) << 48 | u64(f) << 40 | u64(e) << 32 |
-         u64(d) << 24 | u64(c) << 16 | u64(b) << +8 | u64(a);
 }
 
 // Writes a significand consisting of up to 9 decimal digits (7-9 for normals)
@@ -621,6 +609,21 @@ auto write_significand17(char* buffer, uint64_t value, bool has17digits,
   uint32_t ijklmnop = value_div10 % uint64_t(1e8);
 
   alignas(64) static constexpr struct {
+    static constexpr auto splat64(uint64_t x) -> uint128 { return {x, x}; }
+    static constexpr auto splat32(uint32_t x) -> uint128 {
+      return splat64(uint64_t(x) << 32 | x);
+    }
+    static constexpr auto splat16(uint16_t x) -> uint128 {
+      return splat32(uint32_t(x) << 16 | x);
+    }
+    static constexpr auto pack8(uint8_t a, uint8_t b, uint8_t c, uint8_t d,  //
+                                uint8_t e, uint8_t f, uint8_t g, uint8_t h)
+        -> uint64_t {
+      using u64 = uint64_t;
+      return u64(h) << 56 | u64(g) << 48 | u64(f) << 40 | u64(e) << 32 |
+             u64(d) << 24 | u64(c) << 16 | u64(b) << +8 | u64(a);
+    }
+
     uint128 div10k = splat64(div10k_sig);
     uint128 neg10k = splat64(::neg10k);
     uint128 div100 = splat32(div100_sig);
@@ -955,7 +958,6 @@ auto write(Float value, char* buffer) noexcept -> char* {
     buffer[2] = '\0';
     return buffer + 2;
   }
-
   // digit = dec_exp / 100
   uint32_t digit = use_umul128_hi64
                        ? umul128_hi64(dec_exp, 0x290000000000000)
