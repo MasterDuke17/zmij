@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "dragonbox/dragonbox_to_chars.h"
-#include "fmt/base.h"
+#include "fmt/format.h"
 #include "zmij.h"
 
 auto main() -> int {
@@ -54,7 +54,27 @@ auto main() -> int {
         memcpy(&value, &bits, sizeof(float));
 
         zmij::write(actual, sizeof(actual), value);
-        *jkj::dragonbox::to_chars(value, expected) = '\0';
+        auto dec = jkj::dragonbox::to_decimal(fabs(value));
+        int exp = dec.exponent + fmt::detail::count_digits(dec.significand) - 1;
+        if (exp >= -4 && exp < 7) {
+          // Dragonbox only support exponential format so handle fixed
+          // ourselves.
+          std::string str = fmt::format("{}", dec.significand);
+
+          int pos = int(str.size()) + dec.exponent;
+          if (pos <= 0)
+            str = "0." + std::string(-pos, '0') + str;
+          else if (pos < int(str.size()))
+            str.insert(pos, ".");
+          else
+            str.append(dec.exponent, '0');
+
+          char* buffer = expected;
+          if (value < 0) *buffer++ = '-';
+          strcpy(buffer, str.c_str());
+        } else {
+          *jkj::dragonbox::to_chars(value, expected) = '\0';
+        }
 
         if (strcmp(actual, expected) == 0) continue;
         if (strcmp(actual, "0") == 0 && strcmp(expected, "0e0") == 0) continue;
@@ -63,7 +83,8 @@ auto main() -> int {
 
         ++num_errors;
         if (!has_errors) {
-          fmt::print("\nOutput mismatch: {} != {}\n", actual, expected);
+          fmt::print("\nOutput mismatch: {} != {} ({})\n", actual, expected,
+                     exp);
           has_errors = true;
         }
       }

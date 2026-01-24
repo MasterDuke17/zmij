@@ -504,12 +504,10 @@ inline auto read8(char* buffer) noexcept -> uint64_t {
 // and removes trailing zeros.
 auto write_significand9(char* buffer, uint32_t value, bool has9digits) noexcept
     -> char* {
-  char* start = buffer;
   buffer = write_if(buffer, value / 100'000'000, has9digits);
   uint64_t bcd = to_bcd8(value % 100'000'000);
   write8(buffer, bcd | zeros);
-  buffer += count_trailing_nonzeros(bcd);
-  return buffer - int(buffer - start == 1);
+  return buffer + count_trailing_nonzeros(bcd);
 }
 
 // Writes a significand consisting of up to 17 decimal digits (16-17 for
@@ -870,29 +868,38 @@ ZMIJ_INLINE auto to_decimal_normal(UInt bin_sig, int64_t raw_exp,
   return to_decimal_schubfach(bin_sig, bin_exp, regular);
 }
 
+template <int num_bits>
 auto write_fixed(char* buffer, uint64_t dec_sig, int dec_exp, bool has17digits,
                  long long dec_sig_div10) noexcept -> char* {
   if (dec_exp < 0) {
     memcpy(buffer, "0.0000000", 8);
-    buffer = write_significand17(buffer + 1 - dec_exp, dec_sig, has17digits,
-                                 dec_sig_div10);
+    buffer = num_bits == 64 ? write_significand17(buffer + 1 - dec_exp, dec_sig,
+                                                  has17digits, dec_sig_div10)
+                            : write_significand9(buffer + 1 - dec_exp, dec_sig,
+                                                 has17digits);
     *buffer = '\0';
     return buffer;
   }
 
   // Avoid reading uninitialized memory (would be unnecessary in asm).
-  write8(buffer + 16, 0);
+  write8(buffer + (num_bits == 64 ? 16 : 7), 0);
 
   char* start = buffer;
-  buffer = write_significand17(buffer, dec_sig, has17digits, dec_sig_div10);
+  buffer = num_bits == 64 ? write_significand17(buffer, dec_sig, has17digits,
+                                                dec_sig_div10)
+                          : write_significand9(buffer, dec_sig, has17digits);
 
   // Branchless move to make space for the '.' without OOB accesses.
   char* part1 = start + dec_exp + (dec_exp < 2);
   char* part2 = part1 + (dec_exp < 2) + (dec_exp < 9 ? 7 : 0);
-  uint64_t value1 = read8(part1);
-  uint64_t value2 = read8(part2);
-  write8(part1 + 1, value1);
-  write8(part2 + 1, value2);
+  if (num_bits == 64) {
+    uint64_t value1 = read8(part1);
+    uint64_t value2 = read8(part2);
+    write8(part1 + 1, value1);
+    write8(part2 + 1, value2);
+  } else {
+    write8(part1 + 1, read8(part1));
+  }
 
   char* dot = start + dec_exp + 1;
   *dot = '.';
@@ -958,22 +965,23 @@ auto write(Float value, char* buffer) noexcept -> char* {
                                    bin_sig != 0);
   }
   int dec_exp = dec.exp;
-  constexpr uint64_t threshold = uint64_t(traits::num_bits == 64 ? 1e16 : 1e8);
-  bool extra_digit = dec.sig >= threshold;
+  bool extra_digit = dec.sig >= uint64_t(traits::num_bits == 64 ? 1e16 : 1e8);
   dec_exp += traits::max_digits10 - 2 + extra_digit;
+  if (traits::num_bits == 32 && dec.sig < uint32_t(1e7)) [[ZMIJ_UNLIKELY]] {
+    dec.sig *= 10;
+    --dec_exp;
+  }
 
   // Write significand.
+  if (dec_exp >= -4 && dec_exp < compute_dec_exp(traits::digits + 1, true)) {
+    return write_fixed<traits::num_bits>(buffer, dec.sig, dec_exp, extra_digit,
+                                         dec.sig_div10);
+  }
   char* start = buffer;
   if (traits::num_bits == 64) {
-    if (dec_exp >= -4 && dec_exp < compute_dec_exp(traits::digits + 1, true))
-      return write_fixed(buffer, dec.sig, dec_exp, extra_digit, dec.sig_div10);
     buffer =
         write_significand17(buffer + 1, dec.sig, extra_digit, dec.sig_div10);
   } else {
-    if (dec.sig < uint32_t(1e7)) [[ZMIJ_UNLIKELY]] {
-      dec.sig *= 10;
-      --dec_exp;
-    }
     buffer = write_significand9(buffer + 1, dec.sig, extra_digit);
   }
   start[0] = start[1];
