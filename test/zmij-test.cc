@@ -6,6 +6,7 @@
 // configurations without building multiple versions of the library and to test
 // internal functions.
 #ifndef ZMIJ_C
+#define ZMIJ_C 0
 #include "../zmij.cc"
 #else
 #define _Alignas(x) alignas(x)
@@ -62,7 +63,7 @@ TEST(dtoa_test, normal) {
   EXPECT_EQ(dtoa(6.62607015e-34), "6.62607015e-34");
 
   // Exact half-ulp tie when rounding to nearest integer.
-  EXPECT_EQ(dtoa(5.444310685350916e+14), "5.444310685350916e+14");
+  EXPECT_EQ(dtoa(5.444310685350916e+14), "544431068535091.6");
 }
 
 TEST(dtoa_test, subnormal) {
@@ -75,32 +76,75 @@ TEST(dtoa_test, subnormal) {
 }
 
 TEST(dtoa_test, all_irregular) {
+  const char* fixed[] = {
+    "0.0001220703125",
+    "0.000244140625",
+    "0.00048828125",
+    "0.0009765625",
+    "0.001953125",
+    "0.00390625",
+    "0.0078125",
+    "0.015625",
+    "0.03125",
+    "0.0625",
+    "0.125",
+    "0.25",
+    "0.5"
+  };
   for (uint64_t exp = 1; exp < 0x3ff; ++exp) {
     uint64_t bits = exp << 52;
     double value = 0;
     memcpy(&value, &bits, sizeof(double));
 
+    int fixed_start = 1010, fixed_end = 1022;
+    if (exp >= fixed_start && exp <= fixed_end) {
+      EXPECT_EQ(dtoa(value), fixed[exp - fixed_start]);
+      continue;
+    }
+
     char expected[32] = {};
     *jkj::dragonbox::to_chars(value, expected) = '\0';
 
-    EXPECT_EQ(dtoa(value), expected);
+    EXPECT_EQ(dtoa(value), expected) << exp;
   }
 }
 
 TEST(dtoa_test, all_exponents) {
+  const char* fixed[] = {
+    "0.00012207031250000003",
+    "0.00024414062500000005",
+    "0.0004882812500000001",
+    "0.0009765625000000002",
+    "0.0019531250000000004",
+    "0.003906250000000001",
+    "0.007812500000000002",
+    "0.015625000000000003",
+    "0.03125000000000001",
+    "0.06250000000000001",
+    "0.12500000000000003",
+    "0.25000000000000006",
+    "0.5000000000000001",
+    "1.0000000000000002"
+  };
   for (uint64_t exp = 0; exp <= 0x3ff; ++exp) {
     uint64_t bits = (exp << 52) | 1;
     double value = 0;
     memcpy(&value, &bits, sizeof(double));
 
+    int fixed_start = 1010, fixed_end = 1023;
+    if (exp >= fixed_start && exp <= fixed_end) {
+      EXPECT_EQ(dtoa(value), fixed[exp - fixed_start]);
+      continue;
+    }
+
     char expected[32] = {};
     *jkj::dragonbox::to_chars(value, expected) = '\0';
 
-    EXPECT_EQ(dtoa(value), expected);
+    EXPECT_EQ(dtoa(value), expected) << exp;
   }
 }
 
-TEST(dtoa_test, small_int) { EXPECT_EQ(dtoa(1), "1e+00"); }
+TEST(dtoa_test, small_int) { EXPECT_EQ(dtoa(1), "1"); }
 
 TEST(dtoa_test, zero) {
   EXPECT_EQ(dtoa(0), "0");
@@ -134,7 +178,7 @@ TEST(dtoa_test, single_candidate) {
 TEST(dtoa_test, null_terminated) {
   char buffer[zmij::double_buffer_size] = {};
   zmij::write(buffer, sizeof(buffer), 9.061488e+15);
-  EXPECT_STREQ(buffer, "9.061488e+15");
+  EXPECT_STREQ(buffer, "9061488000000000");
   zmij::write(buffer, sizeof(buffer), std::numeric_limits<double>::quiet_NaN());
   EXPECT_STREQ(buffer, "nan");
 }

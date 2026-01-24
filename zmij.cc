@@ -494,6 +494,12 @@ inline void write8(char* buffer, uint64_t value) noexcept {
   memcpy(buffer, &value, 8);
 }
 
+inline auto read8(char* buffer) noexcept -> uint64_t {
+  uint64_t r;
+  memcpy(&r, buffer, 8);
+  return r;
+}
+
 // Writes a significand consisting of up to 9 decimal digits (7-9 for normals)
 // and removes trailing zeros.
 auto write_significand9(char* buffer, uint32_t value, bool has9digits) noexcept
@@ -513,16 +519,15 @@ auto write_significand9(char* buffer, uint32_t value, bool has9digits) noexcept
 auto write_significand17(char* buffer, uint64_t value, bool has17digits,
                          long long value_div10) noexcept -> char* {
   if (!ZMIJ_USE_NEON && !ZMIJ_USE_SSE) {
-    char* start = buffer + 1;
     // Digits/pairs of digits are denoted by letters: value = abbccddeeffgghhii.
     uint32_t abbccddee = uint32_t(value / 100'000'000);
     uint32_t ffgghhii = uint32_t(value % 100'000'000);
-    buffer = write_if(start, abbccddee / 100'000'000, has17digits);
+    buffer = write_if(buffer, abbccddee / 100'000'000, has17digits);
     uint64_t bcd = to_bcd8(abbccddee % 100'000'000);
     write8(buffer, bcd | zeros);
     if (ffgghhii == 0) {
-      buffer += count_trailing_nonzeros(bcd);
-      return buffer - int(buffer - start == 1);
+      write8(buffer + 8, zeros);
+      return buffer + count_trailing_nonzeros(bcd);
     }
     bcd = to_bcd8(ffgghhii);
     write8(buffer + 8, bcd | zeros);
@@ -560,8 +565,7 @@ auto write_significand17(char* buffer, uint64_t value, bool has17digits,
   uint64_t a = uint64_t(umul128(abbccddee, c->mul_const) >> 90);
   uint64_t bbccddee = abbccddee - a * hundred_million;
 
-  char* start = buffer + 1;
-  buffer = write_if(start, a, has17digits);
+  buffer = write_if(buffer, a, has17digits);
 
   uint64x1_t ffgghhii_bbccddee_64 = {(uint64_t(ffgghhii) << 32) | bbccddee};
   int32x2_t bbccddee_ffgghhii = vreinterpret_s32_u64(ffgghhii_bbccddee_64);
@@ -596,7 +600,7 @@ auto write_significand17(char* buffer, uint64_t value, bool has17digits,
       vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(is_not_zero, 4)), 0);
 
   buffer += 16 - ((zeroes != 0 ? clz(zeroes) : 64) >> 2);
-  return buffer - int(buffer - start == 1);
+  return buffer;
 #elif ZMIJ_USE_SSE
   uint32_t last_digit = value - value_div10 * 10;
 
@@ -692,7 +696,7 @@ auto write_significand17(char* buffer, uint64_t value, bool has17digits,
   auto len = size_t(64) - clz(mask);  // size_t for native arithmetic
 
   _mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), digits);
-  return buffer + ((last_digit != 0) ? 17 : len - (len == 1));
+  return buffer + (last_digit != 0 ? 17 : len);
 #endif    // ZMIJ_USE_SSE
 }
 
@@ -928,7 +932,41 @@ auto write(Float value, char* buffer) noexcept -> char* {
   if (traits::num_bits == 64) {
     bool has17digits = dec.sig >= uint64_t(1e16);
     dec_exp += traits::max_digits10 - 2 + has17digits;
-    buffer = write_significand17(buffer, dec.sig, has17digits, dec.sig_div10);
+
+    if (dec_exp >= -4 && dec_exp < 0) {
+      memcpy(buffer, "0.0000000", 8);
+      buffer = write_significand17(buffer + 1 - dec_exp, dec.sig, has17digits,
+                                   dec.sig_div10);
+      *buffer = '\0';
+      return buffer;
+    }
+
+    // Could merge this path with the scientific path, or increase the upper
+    // bound if this branch is bad on real world data.
+    if (dec_exp >= 0 && dec_exp < 16) {
+      // Avoid reading uninitialized memory (would be unnecessary in asm).
+      write8(buffer + 16, 0);
+
+      buffer = write_significand17(buffer, dec.sig, has17digits, dec.sig_div10);
+
+      // Branchless move to make space for the '.' without OOB accesses.
+      char* part1 = start + dec_exp + (dec_exp < 2);
+      char* part2 = part1 + (dec_exp < 2) + (dec_exp < 9 ? 7 : 0);
+      uint64_t value1 = read8(part1);
+      uint64_t value2 = read8(part2);
+      write8(part1 + 1, value1);
+      write8(part2 + 1, value2);
+
+      char* dot = start + dec_exp + 1;
+      *dot = '.';
+
+      buffer = buffer > dot ? buffer + 1 : dot;
+      *buffer = '\0';
+      return buffer;
+    }
+
+    buffer =
+        write_significand17(buffer + 1, dec.sig, has17digits, dec.sig_div10);
   } else {
     if (dec.sig < uint32_t(1e7)) [[ZMIJ_UNLIKELY]] {
       dec.sig *= 10;
@@ -940,6 +978,7 @@ auto write(Float value, char* buffer) noexcept -> char* {
   }
   start[0] = start[1];
   start[1] = '.';
+  buffer -= (buffer - 1 == start + 1);  // Remove trailing point.
 
   // Write exponent.
   uint16_t e_sign = dec_exp >= 0 ? ('+' << 8 | 'e') : ('-' << 8 | 'e');
