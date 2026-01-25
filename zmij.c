@@ -162,18 +162,6 @@ typedef struct {
   return u.lo;
 }
 
-[[ZMIJ_MAYBE_UNUSED]] static inline uint128 uint128_rshift(uint128 u,
-                                                           int shift) {
-  if (shift == 32) {
-    uint64_t hilo = (uint32_t)u.hi;
-    uint128 result = {u.hi >> 32, (hilo << 32) | (u.lo >> 32)};
-    return result;
-  }
-  assert(shift >= 64 && shift < 128);
-  uint128 result = {0, u.hi >> (shift - 64)};
-  return result;
-}
-
 [[ZMIJ_MAYBE_UNUSED]] static inline uint128 uint128_add(uint128 lhs,
                                                         uint128 rhs) {
 #ifdef _M_AMD64
@@ -202,6 +190,21 @@ typedef unsigned __int128 uint128_t;
 typedef uint128 uint128_t;
 #endif  // ZMIJ_USE_INT128
 
+[[ZMIJ_MAYBE_UNUSED]] static inline uint128_t uint128_rshift(uint128_t u,
+                                                             int shift) {
+#if ZMIJ_USE_INT128
+  return u >> shift;
+#else
+  if (shift == 32) {
+    uint64_t hilo = (uint32_t)u.hi;
+    uint128 result = {u.hi >> 32, (hilo << 32) | (u.lo >> 32)};
+    return result;
+  }
+  assert(shift >= 64 && shift < 128);
+  uint128 result = {0, u.hi >> (shift - 64)};
+  return result;
+#endif
+}
 #if ZMIJ_USE_INT128 && defined(__APPLE__)
 static const bool use_umul128_hi64 = true;  // Use umul128_hi64 for division.
 #else
@@ -251,14 +254,14 @@ static uint64_t umul128_hi64(uint64_t x, uint64_t y) {
 #endif
 }
 
-static uint64_t lo64(uint128 v) {
+static uint64_t lo64(uint128_t v) {
 #if ZMIJ_USE_INT128
   return (uint64_t)v;
 #else
   return v.lo;
 #endif
 }
-static uint64_t hi64(uint128 v) {
+static uint64_t hi64(uint128_t v) {
 #if ZMIJ_USE_INT128
   return v >> 64;
 #else
@@ -1166,7 +1169,7 @@ static char* write_significand17(char* buffer, uint64_t value, bool has17digits,
 
   // We could probably make this bit faster, but we're preferring to
   // reuse the constants for now.
-  uint64_t a = lo64(uint128_rshift(umul128_hi64(abbccddee, c->mul_const), 90));
+  uint64_t a = lo64(uint128_rshift(umul128(abbccddee, c->mul_const), 90));
   uint64_t bbccddee = abbccddee - a * hundred_million;
 
   buffer = write_if(buffer, a, has17digits);
