@@ -332,9 +332,11 @@ template <typename Float> struct float_traits : std::numeric_limits<Float> {
 // 128-bit significands of powers of 10 rounded down.
 // Generated using 192-bit arithmetic method by Dougall Johnson.
 struct pow10_significands_table {
+  static constexpr bool compress = false;
   static constexpr bool split_tables = ZMIJ_AARCH64 != 0;
   static constexpr int num_pow10 = 617;
-  uint64_t data[num_pow10 * 2] = {};
+  static constexpr int compression_ratio = compress ? 27 : 1;
+  uint64_t data[(num_pow10 / compression_ratio + compress) * 2] = {};
 
   ZMIJ_CONSTEXPR auto operator[](int dec_exp) const noexcept -> uint128 {
     constexpr int dec_exp_min = -292;
@@ -361,13 +363,17 @@ struct pow10_significands_table {
     uint192 current = {0xe000000000000000, 0x25e8e89c13bb0f7a,
                        0xff77b1fcbebcdc4f};
     uint64_t ten = 0xa000000000000000;
+    constexpr int table_size = sizeof(data) / (sizeof(*data) * 2);
     for (int i = 0; i < num_pow10; ++i) {
-      if (split_tables) {
-        data[num_pow10 - i - 1] = current.w2;
-        data[num_pow10 * 2 - i - 1] = current.w1;
-      } else {
-        data[i * 2] = current.w2;
-        data[i * 2 + 1] = current.w1;
+      if (i % compression_ratio == 0) {
+        int index = i / compression_ratio;
+        if (split_tables) {
+          data[table_size - index - 1] = current.w2;
+          data[table_size * 2 - index - 1] = current.w1;
+        } else {
+          data[index * 2] = current.w2;
+          data[index * 2 + 1] = current.w1;
+        }
       }
 
       uint64_t h0 = umul128_hi64(current.w0, ten);
