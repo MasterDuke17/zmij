@@ -117,7 +117,11 @@ static_assert(!ZMIJ_USE_SSE4_1 || ZMIJ_USE_SSE);
 #  define ZMIJ_MAYBE_UNUSED
 #endif
 
-#if ZMIJ_HAS_ATTRIBUTE(always_inline)
+#ifndef ZMIJ_OPTIMIZE_SIZE
+#  define ZMIJ_OPTIMIZE_SIZE 0
+#endif
+
+#if ZMIJ_HAS_ATTRIBUTE(always_inline) && !ZMIJ_OPTIMIZE_SIZE
 #  define ZMIJ_INLINE __attribute__((always_inline)) inline
 #elif ZMIJ_MSC_VER
 #  define ZMIJ_INLINE __forceinline
@@ -347,7 +351,7 @@ constexpr uint64_t powers_of_5[] = {
 // 128-bit significands of powers of 10 rounded down.
 // Generated using 192-bit arithmetic method by Dougall Johnson.
 struct pow10_significands_table {
-  static constexpr bool compress = false;
+  static constexpr bool compress = ZMIJ_OPTIMIZE_SIZE != 0;
   static constexpr bool split_tables = !compress && ZMIJ_AARCH64 != 0;
   static constexpr int num_pow10 = 617;
   static constexpr int compression_ratio = compress ? 27 : 1;
@@ -457,7 +461,7 @@ constexpr ZMIJ_INLINE auto do_compute_exp_shift(int bin_exp,
 }
 
 struct exp_shift_table {
-  static constexpr bool enable = true;
+  static constexpr bool enable = ZMIJ_OPTIMIZE_SIZE == 0;
   unsigned char data[enable ? float_traits<double>::exp_mask + 1 : 1] = {};
 
   constexpr exp_shift_table() {
