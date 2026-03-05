@@ -205,17 +205,14 @@ inline auto ctz32(uint32_t x) noexcept -> int {
   _BitScanForward(&r, x);
   return r;
 #else
-  /*
-  branchless, use de Bruijn sequences
-  see: https://www.chessprogramming.org/BitScan
-  */
-  constexpr int table[64] = {0,  1,  2,  53, 3,  7,  54, 27, 4,  38, 41, 8,  34,
-                             55, 48, 28, 62, 5,  39, 46, 44, 42, 22, 9,  24, 35,
-                             59, 56, 49, 18, 29, 11, 63, 52, 6,  26, 37, 40, 33,
-                             47, 61, 45, 43, 21, 23, 58, 17, 10, 51, 25, 36, 32,
-                             60, 20, 57, 16, 50, 31, 19, 15, 30, 14, 13, 12};
-  return table[(((uint64_t)x & (~(uint64_t)x + 1)) *
-                ((((uint64_t)0x022FDD63UL) << 32U) + 0xCC95386DUL)) >>
+  // Branchless using de Bruijn sequences:
+  // https://www.chessprogramming.org/BitScan.
+  static constexpr int table[64] = {
+      0,  1,  2,  53, 3,  7,  54, 27, 4,  38, 41, 8,  34, 55, 48, 28,
+      62, 5,  39, 46, 44, 42, 22, 9,  24, 35, 59, 56, 49, 18, 29, 11,
+      63, 52, 6,  26, 37, 40, 33, 47, 61, 45, 43, 21, 23, 58, 17, 10,
+      51, 25, 36, 32, 60, 20, 57, 16, 50, 31, 19, 15, 30, 14, 13, 12};
+  return table[((x & (~x + 1)) * ((uint64_t(0x022FDD63) << 32) + 0xCC95386D)) >>
                58];
 #endif
 }
@@ -839,22 +836,21 @@ ZMIJ_INLINE auto to_decimal_schubfach(UInt bin_sig, int64_t bin_exp,
   unsigned char exp_shift = compute_exp_shift<num_bits>(bin_exp, dec_exp);
   uint128 pow10 = pow10_significands[-dec_exp];
 
-  // Fallback to Schubfach to guarantee correctness in boundary cases.
-  // This requires switching to strict overestimates of powers of 10.
+  // Shubfach requires strict overestimates of powers of 10.
   ++(num_bits == 64 ? pow10.lo : pow10.hi);
 
   // Shift the significand so that boundaries are integer.
   // The two extra bits act as guard and sticky for correct rounding.
   UInt bin_sig_shifted = bin_sig << 2;
-  UInt lsb = bin_sig & 1;
+  UInt odd = bin_sig & 1;
 
   // Compute the lower and upper bounds of the rounding interval by
   // multiplying them by the power of 10 and applying modified rounding.
   UInt lower = (bin_sig_shifted - (regular + 1)) << exp_shift;
-  lower = umulhi_inexact_to_odd(pow10.hi, pow10.lo, lower) + lsb;
+  lower = umulhi_inexact_to_odd(pow10.hi, pow10.lo, lower) + odd;
   lower = (lower + 3) >> 2;  // ceil
   UInt upper = (bin_sig_shifted + 2) << exp_shift;
-  upper = umulhi_inexact_to_odd(pow10.hi, pow10.lo, upper) - lsb;
+  upper = umulhi_inexact_to_odd(pow10.hi, pow10.lo, upper) - odd;
   upper = upper >> 2;  // floor
 
   // The idea of using a single shorter candidate is by Cassio Neri.
@@ -965,6 +961,7 @@ ZMIJ_INLINE auto to_decimal_fast(UInt bin_sig, int64_t raw_exp,
                                      shorter, longer);
     return {select_if_less(ten, upper, shorter + 10, dec_sig), dec_exp};
   }
+  // Fallback to Schubfach to guarantee correctness in boundary cases.
   return to_decimal_schubfach(bin_sig, bin_exp, regular);
 }
 
