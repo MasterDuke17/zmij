@@ -806,14 +806,12 @@ ZMIJ_INLINE auto write_significand(char* buffer, uint64_t value,
 }
 
 #if ZMIJ_USE_SSE4_1 && !ZMIJ_OPTIMIZE_SIZE
-static_assert(compute_dec_exp(float_traits<double>::digits + 1) == 16);
-
 #  define ZMIJ_PACK16(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)  \
     uint128 {                                                          \
       sse_constants::pack8((a), (b), (c), (d), (e), (f), (g), (h)),    \
           sse_constants::pack8((i), (j), (k), (l), (m), (n), (o), (p)) \
     }
-constexpr uint128 double_sse4_shuffle_table[17] = {
+constexpr uint128 shuffle_table[] = {
     ZMIJ_PACK16(0x80, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1),
     ZMIJ_PACK16(15, 0x80, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1),
     ZMIJ_PACK16(15, 14, 0x80, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1),
@@ -849,8 +847,9 @@ auto write_fixed_double_sse4(char* buffer, uint64_t dec_sig, int dec_exp,
   auto unshuffled_bcd = get_double_significand_bcd_unshuffled_sse(
       dec_sig, extra_digit, bbccddee, ffgghhii, c);
   auto unshuffled_digits = _mm_or_si128(unshuffled_bcd, zeros);
-  const __m128i shuffler = _mm_load_si128(
-      m128ptr(&double_sse4_shuffle_table[dec_exp + !extra_digit]));
+  auto index = dec_exp + !extra_digit;
+  assert(index < sizeof(shuffle_table) / sizeof(*shuffle_table));
+  const __m128i shuffler = _mm_load_si128(m128ptr(&shuffle_table[index]));
   auto digits = _mm_shuffle_epi8(unshuffled_digits, shuffler);  // SSSE3
 
   // Count trailing zeros.
