@@ -650,12 +650,10 @@ ZMIJ_INLINE auto get_double_significand_bcd_unshuffled_sse(
 #  if ZMIJ_USE_SSE4_1
   const __m128i neg100 = _mm_load_si128(ptr(&c->neg100));
   const __m128i neg10 = _mm_load_si128(ptr(&c->neg10));
-  // const __m128i bswap = _mm_load_si128(ptr(&c->bswap)); // unused here
 #  else
   const __m128i hundred = _mm_load_si128(ptr(&c->hundred));
   const __m128i moddiv10 = _mm_load_si128(ptr(&c->moddiv10));
 #  endif
-  // const __m128i zeros = _mm_load_si128(ptr(&c->zeros)); // unused here
 
   // The BCD sequences are based on ones provided by Xiang JunBo.
   __m128i x = _mm_set_epi64x(bbccddee, ffgghhii);
