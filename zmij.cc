@@ -571,40 +571,6 @@ constexpr uint32_t neg10 = (1 << 8) - 10;
 
 constexpr uint64_t zeros = 0x0101010101010101u * '0';
 
-#if ZMIJ_USE_SSE
-alignas(64) static constexpr struct sse_constants {
-  static constexpr auto splat64(uint64_t x) -> uint128 { return {x, x}; }
-  static constexpr auto splat32(uint32_t x) -> uint128 {
-    return splat64(uint64_t(x) << 32 | x);
-  }
-  static constexpr auto splat16(uint16_t x) -> uint128 {
-    return splat32(uint32_t(x) << 16 | x);
-  }
-  static constexpr auto pack8(uint8_t a, uint8_t b, uint8_t c, uint8_t d,  //
-                              uint8_t e, uint8_t f, uint8_t g, uint8_t h)
-      -> uint64_t {
-    using u64 = uint64_t;
-    return u64(h) << 56 | u64(g) << 48 | u64(f) << 40 | u64(e) << 32 |
-           u64(d) << 24 | u64(c) << 16 | u64(b) << +8 | u64(a);
-  }
-
-  uint128 div10k = splat64(div10k_sig);
-  uint128 neg10k = splat64(::neg10k);
-  uint128 div100 = splat32(div100_sig);
-  uint128 div10 = splat16((1 << 16) / 10 + 1);
-#  if ZMIJ_USE_SSE4_1
-  uint128 neg100 = splat32(::neg100);
-  uint128 neg10 = splat16((1 << 8) - 10);
-  uint128 bswap = uint128{pack8(15, 14, 13, 12, 11, 10, 9, 8),
-                          pack8(7, 6, 5, 4, 3, 2, 1, 0)};
-#  else
-  uint128 hundred = splat32(100);
-  uint128 moddiv10 = splat16(10 * (1 << 8) - 1);
-#  endif
-  uint128 zeros = splat64(::zeros);
-} sse_consts;
-#endif
-
 auto to_bcd8(uint64_t abcdefgh) noexcept -> uint64_t {
   // An optimization from Xiang JunBo.
   // Three steps BCD. Base 10000 -> base 100 -> base 10.
@@ -641,6 +607,38 @@ inline auto read8(char* buffer) noexcept -> uint64_t {
 }
 
 #if ZMIJ_USE_SSE
+alignas(64) constexpr struct sse_constants {
+  static constexpr auto splat64(uint64_t x) -> uint128 { return {x, x}; }
+  static constexpr auto splat32(uint32_t x) -> uint128 {
+    return splat64(uint64_t(x) << 32 | x);
+  }
+  static constexpr auto splat16(uint16_t x) -> uint128 {
+    return splat32(uint32_t(x) << 16 | x);
+  }
+  static constexpr auto pack8(uint8_t a, uint8_t b, uint8_t c, uint8_t d,  //
+                              uint8_t e, uint8_t f, uint8_t g, uint8_t h)
+      -> uint64_t {
+    using u64 = uint64_t;
+    return u64(h) << 56 | u64(g) << 48 | u64(f) << 40 | u64(e) << 32 |
+           u64(d) << 24 | u64(c) << 16 | u64(b) << +8 | u64(a);
+  }
+
+  uint128 div10k = splat64(div10k_sig);
+  uint128 neg10k = splat64(::neg10k);
+  uint128 div100 = splat32(div100_sig);
+  uint128 div10 = splat16((1 << 16) / 10 + 1);
+#  if ZMIJ_USE_SSE4_1
+  uint128 neg100 = splat32(::neg100);
+  uint128 neg10 = splat16((1 << 8) - 10);
+  uint128 bswap = uint128{pack8(15, 14, 13, 12, 11, 10, 9, 8),
+                          pack8(7, 6, 5, 4, 3, 2, 1, 0)};
+#  else
+  uint128 hundred = splat32(100);
+  uint128 moddiv10 = splat16(10 * (1 << 8) - 1);
+#  endif  // ZMIJ_USE_SSE4_1
+  uint128 zeros = splat64(::zeros);
+} sse_consts;
+
 ZMIJ_INLINE auto get_double_significand_bcd_unshuffled_sse(
     uint64_t value, bool extra_digit, uint32_t bbccddee, uint32_t ffgghhii,
     const sse_constants* c) noexcept -> __m128i {
@@ -695,7 +693,7 @@ ZMIJ_INLINE auto get_double_significand_bcd_sse(
   return _mm_shuffle_epi32(unshuffled_bcd, _MM_SHUFFLE(0, 1, 2, 3));
 #  endif
 }
-#endif
+#endif  // ZMIJ_USE_SSE
 
 // Writes a significand and removes trailing zeros. value has up to 17 decimal
 // digits (16-17 for normals) for double (num_bits == 64) and up to 9 digits
