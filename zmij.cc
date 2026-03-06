@@ -636,22 +636,23 @@ alignas(64) constexpr struct sse_constants {
   uint128 zeros = splat64(::zeros);
 } sse_consts;
 
+using m128ptr = const __m128i*;
+
 // SSE parallel version of to_bcd8: converts bbccddee and ffgghhii into
 // individual BCD digits in SIMD lane order (caller must shuffle).
 ZMIJ_INLINE auto get_double_significand_bcd_unshuffled_sse(
     uint64_t value, bool extra_digit, uint32_t bbccddee, uint32_t ffgghhii,
     const sse_constants* c) noexcept -> __m128i {
-  using ptr = const __m128i*;
-  const __m128i div10k = _mm_load_si128(ptr(&c->div10k));
-  const __m128i neg10k = _mm_load_si128(ptr(&c->neg10k));
-  const __m128i div100 = _mm_load_si128(ptr(&c->div100));
-  const __m128i div10 = _mm_load_si128(ptr(&c->div10));
+  const __m128i div10k = _mm_load_si128(m128ptr(&c->div10k));
+  const __m128i neg10k = _mm_load_si128(m128ptr(&c->neg10k));
+  const __m128i div100 = _mm_load_si128(m128ptr(&c->div100));
+  const __m128i div10 = _mm_load_si128(m128ptr(&c->div10));
 #  if ZMIJ_USE_SSE4_1
-  const __m128i neg100 = _mm_load_si128(ptr(&c->neg100));
-  const __m128i neg10 = _mm_load_si128(ptr(&c->neg10));
+  const __m128i neg100 = _mm_load_si128(m128ptr(&c->neg100));
+  const __m128i neg10 = _mm_load_si128(m128ptr(&c->neg10));
 #  else
-  const __m128i hundred = _mm_load_si128(ptr(&c->hundred));
-  const __m128i moddiv10 = _mm_load_si128(ptr(&c->moddiv10));
+  const __m128i hundred = _mm_load_si128(m128ptr(&c->hundred));
+  const __m128i moddiv10 = _mm_load_si128(m128ptr(&c->moddiv10));
 #  endif
 
   // The BCD sequences are based on ones provided by Xiang JunBo.
@@ -780,11 +781,11 @@ ZMIJ_INLINE auto write_significand(char* buffer, uint64_t value,
   const auto* c = &sse_consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
-  const __m128i zeros = _mm_load_si128((const __m128i*)(&c->zeros));
+  const __m128i zeros = _mm_load_si128(m128ptr(&c->zeros));
   auto unshuffled_bcd = get_double_significand_bcd_unshuffled_sse(
       value, extra_digit, bbccddee, ffgghhii, c);
 #  if ZMIJ_USE_SSE4_1
-  const __m128i bswap = _mm_load_si128((const __m128i*)(&c->bswap));
+  const __m128i bswap = _mm_load_si128(m128ptr(&c->bswap));
   auto bcd = _mm_shuffle_epi8(unshuffled_bcd, bswap);  // SSSE3
 #  else
   auto bcd = _mm_shuffle_epi32(unshuffled_bcd, _MM_SHUFFLE(0, 1, 2, 3));
@@ -843,13 +844,13 @@ auto write_fixed_double_sse4(char* buffer, uint64_t dec_sig, int dec_exp,
 
   const auto* c = &sse_consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
-  const __m128i zeros = _mm_load_si128((const __m128i*)(&c->zeros));
+  const __m128i zeros = _mm_load_si128(m128ptr(&c->zeros));
 
   auto unshuffled_bcd = get_double_significand_bcd_unshuffled_sse(
       dec_sig, extra_digit, bbccddee, ffgghhii, c);
   auto unshuffled_digits = _mm_or_si128(unshuffled_bcd, zeros);
   const __m128i shuffler = _mm_load_si128(
-      (const __m128i*)&double_sse4_shuffle_table[dec_exp + !extra_digit]);
+      m128ptr(&double_sse4_shuffle_table[dec_exp + !extra_digit]));
   auto digits = _mm_shuffle_epi8(unshuffled_digits, shuffler);  // SSSE3
 
   // Count trailing zeros.
