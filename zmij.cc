@@ -681,18 +681,6 @@ ZMIJ_INLINE auto get_double_significand_bcd_unshuffled_sse(
 #  endif  // ZMIJ_USE_SSE4_1
 }
 
-ZMIJ_INLINE auto get_double_significand_bcd_sse(
-    uint64_t value, bool extra_digit, uint32_t bbccddee, uint32_t ffgghhii,
-    const sse_constants* c) noexcept -> __m128i {
-  auto unshuffled_bcd = get_double_significand_bcd_unshuffled_sse(
-      value, extra_digit, bbccddee, ffgghhii, c);
-#  if ZMIJ_USE_SSE4_1
-  const __m128i bswap = _mm_load_si128((const __m128i*)(&c->bswap));
-  return _mm_shuffle_epi8(unshuffled_bcd, bswap);  // SSSE3
-#  else
-  return _mm_shuffle_epi32(unshuffled_bcd, _MM_SHUFFLE(0, 1, 2, 3));
-#  endif
-}
 #endif  // ZMIJ_USE_SSE
 
 // Writes a significand and removes trailing zeros. value has up to 17 decimal
@@ -801,8 +789,14 @@ ZMIJ_INLINE auto write_significand(char* buffer, uint64_t value,
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
   const __m128i zeros = _mm_load_si128((const __m128i*)(&c->zeros));
-  auto bcd =
-      get_double_significand_bcd_sse(value, extra_digit, bbccddee, ffgghhii, c);
+  auto unshuffled_bcd = get_double_significand_bcd_unshuffled_sse(
+      value, extra_digit, bbccddee, ffgghhii, c);
+#  if ZMIJ_USE_SSE4_1
+  const __m128i bswap = _mm_load_si128((const __m128i*)(&c->bswap));
+  auto bcd = _mm_shuffle_epi8(unshuffled_bcd, bswap);  // SSSE3
+#  else
+  auto bcd = _mm_shuffle_epi32(unshuffled_bcd, _MM_SHUFFLE(0, 1, 2, 3));
+#  endif
 
   // Count leading zeros.
   __m128i mask128 = _mm_cmpgt_epi8(bcd, _mm_setzero_si128());
