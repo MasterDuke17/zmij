@@ -199,21 +199,18 @@ inline auto ctz32(uint32_t x) noexcept -> int {
   assert(x != 0);
 #if ZMIJ_HAS_BUILTIN(__builtin_ctz)
   return __builtin_ctz(x);
-#elif ZMIJ_MSC_VER >= 1400 && (defined(_M_AMD64) || defined(_M_ARM64) || \
-                               defined(_M_IX86) || defined(_M_ARM))
+#elif ZMIJ_MSC_VER
   unsigned long r;
   _BitScanForward(&r, x);
   return r;
 #else
-  // Branchless using de Bruijn sequences:
-  // https://www.chessprogramming.org/BitScan.
-  static constexpr int table[64] = {
+  // Branchless using de Bruijn sequences.
+  static constexpr int table[] = {
       0,  1,  2,  53, 3,  7,  54, 27, 4,  38, 41, 8,  34, 55, 48, 28,
       62, 5,  39, 46, 44, 42, 22, 9,  24, 35, 59, 56, 49, 18, 29, 11,
       63, 52, 6,  26, 37, 40, 33, 47, 61, 45, 43, 21, 23, 58, 17, 10,
       51, 25, 36, 32, 60, 20, 57, 16, 50, 31, 19, 15, 30, 14, 13, 12};
-  return table[((x & (~x + 1)) * ((uint64_t(0x022FDD63) << 32) + 0xCC95386D)) >>
-               58];
+  return table[((x & (~x + 1)) * uint64_t(0x022FDD63CC95386D)) >> 58];
 #endif
 }
 
