@@ -639,6 +639,8 @@ alignas(64) constexpr struct sse_constants {
   uint128 zeros = splat64(::zeros);
 } sse_consts;
 
+// SSE parallel version of to_bcd8: converts bbccddee and ffgghhii into
+// individual BCD digits in SIMD lane order (caller must shuffle).
 ZMIJ_INLINE auto get_double_significand_bcd_unshuffled_sse(
     uint64_t value, bool extra_digit, uint32_t bbccddee, uint32_t ffgghhii,
     const sse_constants* c) noexcept -> __m128i {
@@ -665,17 +667,13 @@ ZMIJ_INLINE auto get_double_significand_bcd_unshuffled_sse(
   __m128i z = _mm_add_epi64(
       y,
       _mm_mullo_epi32(neg100, _mm_srli_epi32(_mm_mulhi_epu16(y, div100), 3)));
-  __m128i big_endian_bcd =
-      _mm_add_epi16(z, _mm_mullo_epi16(neg10, _mm_mulhi_epu16(z, div10)));
-  return big_endian_bcd;
-#  else   // !ZMIJ_USE_SSE4_1
+  return _mm_add_epi16(z, _mm_mullo_epi16(neg10, _mm_mulhi_epu16(z, div10)));
+#  else
   __m128i y_div_100 = _mm_srli_epi16(_mm_mulhi_epu16(y, div100), 3);
   __m128i y_mod_100 = _mm_sub_epi16(y, _mm_mullo_epi16(y_div_100, hundred));
   __m128i z = _mm_or_si128(_mm_slli_epi32(y_mod_100, 16), y_div_100);
-  __m128i unshuffled_bcd =
-      _mm_sub_epi16(_mm_slli_epi16(z, 8),
-                    _mm_mullo_epi16(moddiv10, _mm_mulhi_epu16(z, div10)));
-  return unshuffled_bcd;
+  return _mm_sub_epi16(_mm_slli_epi16(z, 8),
+                       _mm_mullo_epi16(moddiv10, _mm_mulhi_epu16(z, div10)));
 #  endif  // ZMIJ_USE_SSE4_1
 }
 #endif  // ZMIJ_USE_SSE
@@ -855,8 +853,7 @@ auto write_fixed_double_sse4(char* buffer, uint64_t dec_sig, int dec_exp,
   auto unshuffled_digits = _mm_or_si128(unshuffled_bcd, zeros);
   const __m128i shuffler = _mm_load_si128(
       (const __m128i*)&double_sse4_shuffle_table[dec_exp + !extra_digit]);
-  auto digits = _mm_shuffle_epi8(unshuffled_digits,
-                                 shuffler);  // SSSE3 for _mm_shuffle_epi8
+  auto digits = _mm_shuffle_epi8(unshuffled_digits, shuffler);  // SSSE3
 
   // Count trailing zeros.
   __m128i mask128 = _mm_cmpgt_epi8(unshuffled_bcd, _mm_setzero_si128());
