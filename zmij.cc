@@ -935,27 +935,6 @@ auto write_fixed_double_sse4(char* buffer, uint64_t dec_sig, int dec_exp,
 }
 #endif
 
-template <int num_bits>
-auto write_fixed(char* buffer, uint64_t dec_sig, int dec_exp,
-                 bool extra_digit) noexcept -> char* {
-#if ZMIJ_USE_SSE4_1 && !ZMIJ_OPTIMIZE_SIZE
-  if (num_bits == 64 && dec_exp >= 0)
-    return write_fixed_double_sse4(buffer, dec_sig, dec_exp, extra_digit);
-#endif
-
-  // Write "0.000..." prefix (effective only when dec_exp < 0).
-  memcpy(buffer, "0.000000", 8);
-
-  auto& fmt = dec_exp_formats[dec_exp];
-  char* start = buffer;
-  char* sig_start = buffer + fmt.start_pos;
-  buffer = write_significand<num_bits>(sig_start, dec_sig, extra_digit);
-  memmove(start + fmt.shift_pos, start + fmt.point_pos,
-          num_bits == 64 ? 16 : 8);
-  start[fmt.point_pos] = '.';
-  return sig_start + fmt.exp_pos[buffer - sig_start - 1];
-}
-
 struct to_decimal_result {
   long long sig;
   int exp;
@@ -1162,8 +1141,23 @@ auto write(Float value, char* buffer) noexcept -> char* {
     --dec_exp;
   }
 
-  if (dec_exp >= -4 && dec_exp < compute_dec_exp(traits::digits + 1))
-    return write_fixed<traits::num_bits>(buffer, dec.sig, dec_exp, extra_digit);
+  if (dec_exp >= -4 && dec_exp < compute_dec_exp(traits::digits + 1)) {
+#if ZMIJ_USE_SSE4_1 && !ZMIJ_OPTIMIZE_SIZE
+    if (traits::num_bits == 64 && dec_exp >= 0)
+      return write_fixed_double_sse4(buffer, dec.sig, dec_exp, extra_digit);
+#endif
+
+    const auto& fmt = dec_exp_formats[dec_exp];
+    auto start = buffer, sig_start = buffer + fmt.start_pos;
+
+    memcpy(buffer, "0.000000", 8);  // For dec_exp < 0.
+    buffer =
+        write_significand<traits::num_bits>(sig_start, dec.sig, extra_digit);
+    memmove(start + fmt.shift_pos, start + fmt.point_pos,
+            traits::num_bits == 64 ? 16 : 8);
+    start[fmt.point_pos] = '.';
+    return sig_start + fmt.exp_pos[buffer - sig_start - 1];
+  }
 
   // Write significand.
   char* start = buffer;
