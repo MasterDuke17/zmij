@@ -644,16 +644,6 @@ inline auto write_if(char* buffer, uint32_t digit, bool condition) noexcept
   return buffer + condition;
 }
 
-inline void write8(char* buffer, uint64_t value) noexcept {
-  memcpy(buffer, &value, 8);
-}
-
-inline auto read8(char* buffer) noexcept -> uint64_t {
-  uint64_t r;
-  memcpy(&r, buffer, 8);
-  return r;
-}
-
 #if ZMIJ_USE_SSE
 alignas(64) constexpr struct sse_constants {
   static constexpr auto splat64(uint64_t x) -> uint128 { return {x, x}; }
