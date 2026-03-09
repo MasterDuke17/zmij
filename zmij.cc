@@ -745,7 +745,16 @@ template <int num_bits> struct sig_str {
 template <int num_bits>
 ZMIJ_INLINE auto to_str(char*& buffer, uint64_t value,
                         bool extra_digit) noexcept -> sig_str<num_bits> {
-#if ZMIJ_USE_NEON
+#if !ZMIJ_USE_SIMD
+  // Digits/pairs of digits are denoted by letters: value = abbccddeeffgghhii.
+  uint32_t abbccddee = uint32_t(value / 100'000'000);
+  uint32_t ffgghhii = uint32_t(value % 100'000'000);
+  buffer = write_if(buffer, abbccddee / 100'000'000, extra_digit);
+  uint64_t hi = to_bcd8(abbccddee % 100'000'000);
+  if (ffgghhii == 0) return {{hi + zeros, zeros}, count_trailing_nonzeros(hi)};
+  uint64_t lo = to_bcd8(ffgghhii);
+  return {{hi + zeros, lo + zeros}, 8 + count_trailing_nonzeros(lo)};
+#elif ZMIJ_USE_NEON
   // An optimized version for NEON by Dougall Johnson.
   using int32x4 = std::conditional_t<ZMIJ_MSC_VER != 0, int32_t[4], int32x4_t>;
   using int16x8 = std::conditional_t<ZMIJ_MSC_VER != 0, int16_t[8], int16x8_t>;
@@ -810,7 +819,7 @@ ZMIJ_INLINE auto to_str(char*& buffer, uint64_t value,
   uint64_t zeroes =
       vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(is_not_zero, 4)), 0);
   return {str, 16 - ((zeroes != 0 ? clz(zeroes) : 64) >> 2)};
-#elif ZMIJ_USE_SSE
+#else  // ZMIJ_USE_SSE
   uint32_t abbccddee = uint32_t(value / 100'000'000);
   uint32_t ffgghhii = uint32_t(value % 100'000'000);
   uint32_t a = abbccddee / 100'000'000;
@@ -840,16 +849,7 @@ ZMIJ_INLINE auto to_str(char*& buffer, uint64_t value,
   auto len = 63 - clz((mask << 1) | 1);
 #  endif
   return {_mm_or_si128(bcd, zeros), len};
-#else   // !ZMIJ_USE_NEON && !ZMIJ_USE_SSE
-  // Digits/pairs of digits are denoted by letters: value = abbccddeeffgghhii.
-  uint32_t abbccddee = uint32_t(value / 100'000'000);
-  uint32_t ffgghhii = uint32_t(value % 100'000'000);
-  buffer = write_if(buffer, abbccddee / 100'000'000, extra_digit);
-  uint64_t hi = to_bcd8(abbccddee % 100'000'000);
-  if (ffgghhii == 0) return {{hi + zeros, zeros}, count_trailing_nonzeros(hi)};
-  uint64_t lo = to_bcd8(ffgghhii);
-  return {{hi + zeros, lo + zeros}, 8 + count_trailing_nonzeros(lo)};
-#endif  // !ZMIJ_USE_NEON && !ZMIJ_USE_SSE
+#endif  // ZMIJ_USE_SSE
 }
 
 template <>
