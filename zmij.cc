@@ -493,12 +493,15 @@ struct exp_string_table {
   uint64_t data[enable ? traits::max_exponent10 - min_dec_exp + 1 : 1] = {};
 
   constexpr exp_string_table() {
+    constexpr int fixed_dec_exp_upper = compute_dec_exp(traits::digits + 1);
     for (int e = min_dec_exp; e <= traits::max_exponent10 && enable; ++e) {
       uint64_t abs_e = e >= 0 ? e : -e;
       uint64_t bc = abs_e % 100;
       uint64_t val = ((bc % 10 + '0') << 8) | (bc / 10 + '0');
       if (uint64_t a = abs_e / 100) val = (val << 8) | (a + '0');
-      data[e + offset] = (uint64_t(abs_e >= 100 ? 5 : 4) << 48) | (val << 16) |
+      uint64_t len =
+          e >= -4 && e < fixed_dec_exp_upper ? 0 : abs_e >= 100 ? 5 : 4;
+      data[e + offset] = (len << 48) | (val << 16) |
                          (uint64_t(e >= 0 ? '+' : '-') << 8) | 'e';
     }
   }
@@ -549,8 +552,10 @@ struct dec_exp_format_table {
     }
   }
 
-  constexpr auto operator[](int dec_exp) const noexcept -> const entry& {
+  template <typename Traits>
+  constexpr auto get(int dec_exp) const noexcept -> const entry& {
     unsigned i = unsigned(dec_exp - min_dec_exp);
+    constexpr int max_dec_exp = compute_dec_exp(Traits::digits + 1) - 1;
     return data[i <= unsigned(max_dec_exp - min_dec_exp) ? i : num_entries - 1];
   }
 };
@@ -733,13 +738,13 @@ template <int num_bits> struct dec_digits {
 // up to 17 decimal digits (16-17 for normals) for double (num_bits == 64) and
 // up to 9 digits (8-9 for normals) for float.
 template <int num_bits>
-ZMIJ_INLINE auto to_digits(char*& buffer, uint64_t value,
+ZMIJ_INLINE auto to_digits(char* buffer, uint64_t value,
                            bool extra_digit) noexcept -> dec_digits<num_bits> {
 #if !ZMIJ_USE_SIMD
   // Digits/pairs of digits are denoted by letters: value = abbccddeeffgghhii.
   uint32_t abbccddee = uint32_t(value / 100'000'000);
   uint32_t ffgghhii = uint32_t(value % 100'000'000);
-  buffer = write_if(buffer, abbccddee / 100'000'000, extra_digit);
+  write_if(buffer, abbccddee / 100'000'000, extra_digit);
   uint64_t hi = to_bcd8(abbccddee % 100'000'000);
   if (ffgghhii == 0) return {{hi + zeros, zeros}, count_trailing_nonzeros(hi)};
   uint64_t lo = to_bcd8(ffgghhii);
@@ -775,7 +780,7 @@ ZMIJ_INLINE auto to_digits(char*& buffer, uint64_t value,
   uint64_t a = uint64_t(umul128(abbccddee, c->mul_const) >> 90);
   uint64_t bbccddee = abbccddee - a * hundred_million;
 
-  buffer = write_if(buffer, a, extra_digit);
+  write_if(buffer, a, extra_digit);
 
   uint64x1_t ffgghhii_bbccddee_64 = {(uint64_t(ffgghhii) << 32) | bbccddee};
   int32x2_t bbccddee_ffgghhii = vreinterpret_s32_u64(ffgghhii_bbccddee_64);
@@ -815,7 +820,7 @@ ZMIJ_INLINE auto to_digits(char*& buffer, uint64_t value,
   uint32_t a = abbccddee / 100'000'000;
   uint32_t bbccddee = abbccddee % 100'000'000;
 
-  buffer = write_if(buffer, a, extra_digit);
+  write_if(buffer, a, extra_digit);
 
   const auto* c = &sse_consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
@@ -843,19 +848,11 @@ ZMIJ_INLINE auto to_digits(char*& buffer, uint64_t value,
 }
 
 template <>
-ZMIJ_INLINE auto to_digits<32>(char*& buffer, uint64_t value,
+ZMIJ_INLINE auto to_digits<32>(char* buffer, uint64_t value,
                                bool extra_digit) noexcept -> dec_digits<32> {
-  buffer = write_if(buffer, value / 100'000'000, extra_digit);
+  write_if(buffer, value / 100'000'000, extra_digit);
   uint64_t bcd = to_bcd8(value % 100'000'000);
   return {bcd + zeros, count_trailing_nonzeros(bcd)};
-}
-
-template <int num_bits>
-ZMIJ_INLINE auto write_significand(char* buffer, uint64_t value,
-                                   bool extra_digit) noexcept -> char* {
-  auto s = to_digits<num_bits>(buffer, value, extra_digit);
-  memcpy(buffer, &s.digits, sizeof(s.digits));
-  return buffer + s.num_digits;
 }
 
 #if ZMIJ_USE_SSE4_1 && !ZMIJ_OPTIMIZE_SIZE
@@ -1131,37 +1128,32 @@ auto write(Float value, char* buffer) noexcept -> char* {
     --dec_exp;
   }
 
+  char* start = buffer;
   if (dec_exp >= -4 && dec_exp < compute_dec_exp(traits::digits + 1)) {
-#if ZMIJ_USE_SSE4_1 && !ZMIJ_OPTIMIZE_SIZE
+  #if ZMIJ_USE_SSE4_1 && !ZMIJ_OPTIMIZE_SIZE
     if (traits::num_bits == 64 && dec_exp >= 0)
       return write_fixed_double_sse4(buffer, dec.sig, dec_exp, extra_digit);
-#endif
-
-    const auto& fmt = dec_exp_formats[dec_exp];
-    auto start = buffer, sig_start = buffer + fmt.start_pos;
-
-    memcpy(buffer, "0.000000", 8);  // For dec_exp < 0.
-    buffer =
-        write_significand<traits::num_bits>(sig_start, dec.sig, extra_digit);
-    memmove(start + fmt.shift_pos, start + fmt.point_pos,
-            traits::num_bits == 64 ? 16 : 8);
+  #endif
+    memcpy(buffer, &zeros, 8);  // For dec_exp < 0.
+    const auto& fmt = dec_exp_formats.get<traits>(dec_exp);
+    char* sig_start = buffer + fmt.start_pos;
+    auto dig = to_digits<traits::num_bits>(sig_start, dec.sig, extra_digit);
+    memcpy(sig_start + extra_digit, &dig.digits, sizeof(dig.digits));
+    memmove(start + fmt.shift_pos, start + fmt.point_pos, sizeof(dig.digits));
     start[fmt.point_pos] = '.';
-    return sig_start + fmt.exp_pos[buffer - sig_start - 1];
+    return sig_start + fmt.exp_pos[dig.num_digits + extra_digit - 1];
   }
 
-  // Write significand.
-  char* start = buffer;
-  ++buffer;
-  auto dig = to_digits<traits::num_bits>(buffer, dec.sig, extra_digit);
+  auto dig = to_digits<traits::num_bits>(buffer + 1, dec.sig, extra_digit);
+  buffer += extra_digit + 1;
   memcpy(buffer, &dig.digits, sizeof(dig.digits));
   buffer += dig.num_digits;
-
   start[0] = start[1];
   start[1] = '.';
   buffer -= (buffer - 1 == start + 1);  // Remove trailing point.
 
   // Write exponent.
-  if (exp_string_table::enable) {
+  if (exp_string_table::enable && traits::num_bits == 64) {
     uint64_t exp_data = exp_strings.data[dec_exp + exp_string_table::offset];
     int len = int(exp_data >> 48);
     if (is_big_endian) exp_data = bswap64(exp_data);
