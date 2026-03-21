@@ -856,17 +856,13 @@ ZMIJ_INLINE auto to_digits(char* buffer, uint64_t value,
 #else  // ZMIJ_USE_SSE
   uint32_t abbccddee = uint32_t(value / 100'000'000);
   uint32_t ffgghhii = uint32_t(value % 100'000'000);
-  uint32_t a = abbccddee / 100'000'000;
-  uint32_t bbccddee = abbccddee % 100'000'000;
-
-  write_if(buffer, a, extra_digit);
 
   const auto* c = &sse_consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
   const __m128i zeros = _mm_load_si128(m128ptr(&c->zeros));
   auto unshuffled_bcd =
-      to_unshuffled_digits(value, extra_digit, bbccddee, ffgghhii, *c);
+      to_unshuffled_digits(value, extra_digit, abbccddee, ffgghhii, *c);
 #  if ZMIJ_USE_SSE4_1
   const __m128i bswap = _mm_load_si128(m128ptr(&c->bswap));
   auto bcd = _mm_shuffle_epi8(unshuffled_bcd, bswap);  // SSSE3
@@ -1169,9 +1165,9 @@ auto write(Float value, char* buffer) noexcept -> char* {
   buffer += traits::is_negative(bits);
 
   to_decimal_result dec;
-  constexpr bool split_last_digit = ZMIJ_USE_NEON && traits::num_bits == 64;
+  constexpr bool split_last_digit = ZMIJ_USE_SIMD && traits::num_bits == 64;
   constexpr uint64_t threshold = uint64_t(
-    traits::num_bits == 64 ? (split_last_digit ? 1e15 : 1e16) : 1e8);
+    traits::num_bits == 64 ? (ZMIJ_USE_SIMD ? 1e15 : 1e16) : 1e8);
   if (bin_exp == 0 || bin_exp == traits::exp_mask) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) {
       memcpy(buffer, bin_sig == 0 ? "inf" : "nan", 4);
@@ -1211,9 +1207,8 @@ auto write(Float value, char* buffer) noexcept -> char* {
     char* sig_start = buffer + fmt.start_pos;
     auto dig = to_digits<traits::num_bits>(sig_start, dec.sig, extra_digit);
     if constexpr (split_last_digit) {
-      auto d = vreinterpretq_u8_u16(dig.digits);
-      if (!extra_digit) d = vextq_u8(d, d, 1);
-      memcpy(sig_start, &d, 16);
+      memcpy(sig_start, &dig.digits, 16);
+      if (!extra_digit) memmove(sig_start, sig_start + 1, 15);
       sig_start[15 + extra_digit] = '0' + dec.last_digit;
     } else {
       memcpy(sig_start + extra_digit, &dig.digits, sizeof(dig.digits));
