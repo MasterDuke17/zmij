@@ -825,11 +825,10 @@ template <int num_bits>
 ZMIJ_INLINE auto to_digits(char* buffer, uint64_t value,
                            bool extra_digit) noexcept -> dec_digits<num_bits> {
 #if !ZMIJ_USE_SIMD
-  // Digits/pairs of digits are denoted by letters: value = abbccddeeffgghhii.
-  uint32_t abbccddee = uint32_t(value / 100'000'000);
+  // Digits/pairs of digits are denoted by letters: value = bbccddeeffgghhii.
+  uint32_t bbccddee = uint32_t(value / 100'000'000);
   uint32_t ffgghhii = uint32_t(value % 100'000'000);
-  write_if(buffer, abbccddee / 100'000'000, extra_digit);
-  uint64_t hi = to_bcd8(abbccddee % 100'000'000);
+  uint64_t hi = to_bcd8(bbccddee);
   if (ffgghhii == 0) return {{hi + zeros, zeros}, count_trailing_nonzeros(hi)};
   uint64_t lo = to_bcd8(ffgghhii);
   return {{hi + zeros, lo + zeros}, 8 + count_trailing_nonzeros(lo)};
@@ -1158,9 +1157,9 @@ auto write(Float value, char* buffer) noexcept -> char* {
   buffer += traits::is_negative(bits);
 
   to_decimal_result dec;
-  constexpr bool split_last_digit = ZMIJ_USE_SIMD && traits::num_bits == 64;
+  constexpr bool split_last_digit = traits::num_bits == 64;
   constexpr uint64_t threshold = uint64_t(
-    traits::num_bits == 64 ? (ZMIJ_USE_SIMD ? 1e15 : 1e16) : 1e8);
+    traits::num_bits == 64 ? 1e15 : 1e8);
   if (bin_exp == 0 || bin_exp == traits::exp_mask) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) {
       memcpy(buffer, bin_sig == 0 ? "inf" : "nan", 4);
