@@ -480,6 +480,8 @@ constexpr ZMIJ_INLINE auto compute_exp_shift(int bin_exp, int dec_exp) noexcept
 
 struct exp_shift_table {
   static constexpr bool enable = ZMIJ_OPTIMIZE_SIZE == 0;
+  // num_fractional_bits must be >= 3 to keep shift non-negative and <= 11 to
+  // fit the significand into 64 bits after the shift.
   static constexpr int num_fractional_bits = 6;
   unsigned char data[enable ? float_traits<double>::exp_mask + 1 : 1] = {};
 
