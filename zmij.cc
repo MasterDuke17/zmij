@@ -1007,6 +1007,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
                       ? umul128_hi64(bin_exp, log10_2_sig << (64 - log10_2_exp))
                       : compute_dec_exp(bin_exp);
     uint64_t even = 1 - (bin_sig & 1);
+    constexpr uint64_t half = uint64_t(1) << 63;
 
     if (num_bits == 64) {
       // Scale by 10**(-dec_exp-1) to directly produce the shorter candidate
@@ -1055,11 +1056,10 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
       integral += round_up;
 
       // Derive the extra digit from the fractional part (parallel with
-      // rounding). The bias (2**63 + 6) rounds to nearest per xjb paper.
-      constexpr uint64_t rounding_bias = (uint64_t(1) << 63) + 6;
+      // rounding). +6 is needed for boundary cases.
       uint64_t digit_frac = fractional * 10;
       int digit = int(umul128_hi64(fractional, 10) +
-                      (digit_frac + rounding_bias < digit_frac));
+                      (digit_frac + half + 6 < digit_frac));
       if (fractional == (uint64_t(1) << 62)) [[ZMIJ_UNLIKELY]]
         digit = 2;
       return {integral, dec_exp, (round_up + round_down) ? 0 : digit};
@@ -1072,10 +1072,9 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
     uint128_t p = umul128(pow10.hi, bin_sig << exp_shift);
     UInt integral = uint64_t(p >> 64);
     uint64_t fractional = uint64_t(p);
-    constexpr uint64_t half_ulp = uint64_t(1) << 63;
 
     // Exact half-ulp tie when rounding to nearest integer.
-    int64_t cmp = int64_t(fractional - half_ulp);
+    int64_t cmp = int64_t(fractional - half);
     if (cmp == 0) [[ZMIJ_UNLIKELY]]
       break;
 
