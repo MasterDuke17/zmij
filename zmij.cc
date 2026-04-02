@@ -480,9 +480,9 @@ constexpr ZMIJ_INLINE auto compute_exp_shift(int bin_exp, int dec_exp) noexcept
 
 struct exp_shift_table {
   static constexpr bool enable = ZMIJ_OPTIMIZE_SIZE == 0;
-  // num_fractional_bits must be >= 3 to keep shift non-negative and <= 11 to
+  // extra_shift must be >= 3 to keep shift non-negative and <= 11 to
   // fit the significand into 64 bits after the shift.
-  static constexpr int num_fractional_bits = 6;
+  static constexpr int extra_shift = 6;
   unsigned char data[enable ? float_traits<double>::exp_mask + 1 : 1] = {};
 
   constexpr exp_shift_table() {
@@ -490,8 +490,7 @@ struct exp_shift_table {
       int bin_exp = raw_exp - float_traits<double>::exp_offset;
       if (raw_exp == 0) ++bin_exp;
       int dec_exp = compute_dec_exp(bin_exp);
-      data[raw_exp] =
-          compute_exp_shift(bin_exp, dec_exp + 1) + num_fractional_bits;
+      data[raw_exp] = compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
     }
   }
 };
@@ -1013,18 +1012,18 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
       // Scale by 10**(-dec_exp-1) to directly produce the shorter candidate
       // (15-16 digits), deriving the extra digit from the fractional part.
       // This eliminates div10 from the critical path.
-      constexpr int num_fractional_bits = exp_shift_table::num_fractional_bits;
+      constexpr int extra_shift = exp_shift_table::extra_shift;
       unsigned char shift =
           exp_shift_table::enable
               ? exp_shifts.data[bin_exp + traits::exp_offset]
-              : compute_exp_shift(bin_exp, dec_exp + 1) + num_fractional_bits;
+              : compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
       ZMIJ_ASM(("" : "+r"(dec_exp)));  // Force 32-bit reg for sxtw addressing.
       uint128 pow10 = pow10_significands[-dec_exp - 1];
       uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
 
-      long long integral = p.hi >> num_fractional_bits;
+      long long integral = p.hi >> extra_shift;
       uint64_t fractional =
-          (p.hi << (64 - num_fractional_bits)) | (p.lo >> num_fractional_bits);
+          (p.hi << (64 - extra_shift)) | (p.lo >> extra_shift);
 
       // value = 5.0507837461e-27
       // next  = 5.0507837461000010e-27
@@ -1046,7 +1045,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
       // l - longer underestimate,  L - longer overestimate
 
       // Close to half-ulp tie when rounding to nearest integer.
-      uint64_t scaled_half_ulp = pow10.hi >> (num_fractional_bits + 1 - shift);
+      uint64_t scaled_half_ulp = pow10.hi >> (extra_shift + 1 - shift);
       if (fractional == scaled_half_ulp) [[ZMIJ_UNLIKELY]]
         break;
 
