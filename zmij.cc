@@ -1023,8 +1023,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
       uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
 
       long long integral = p.hi >> extra_shift;
-      uint64_t fractional =
-          (p.hi << (64 - extra_shift)) | (p.lo >> extra_shift);
+      uint64_t fractional = p.hi << (64 - extra_shift) | p.lo >> extra_shift;
 
       // value = 5.0507837461e-27
       // next  = 5.0507837461000010e-27
@@ -1045,7 +1044,6 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
       // s - shorter underestimate, S - shorter overestimate
       // l - longer underestimate,  L - longer overestimate
 
-      // Close to half-ulp tie when rounding to nearest integer.
       uint64_t scaled_half_ulp = pow10.hi >> (extra_shift + 1 - shift);
       if (fractional == scaled_half_ulp) [[ZMIJ_UNLIKELY]]
         break;
