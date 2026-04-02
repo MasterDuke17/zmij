@@ -854,7 +854,7 @@ def find_d2s_edge_case_2(e2, e10, h, p10, p10_exact, SIG_MIN, SIG_MAX):
 
 def find_d2s_edge_case_3(e2, e10, h, p10, p10_exact, SIG_MIN, SIG_MAX):
     # Find: (sig * cache) % den == half_ulp
-    if e10 == 0:
+    if e10 == -1:
         return # special case, no need to check
 
     known_count = 0
@@ -864,13 +864,13 @@ def find_d2s_edge_case_3(e2, e10, h, p10, p10_exact, SIG_MIN, SIG_MAX):
         den = 10 ** len(str(ulp))
         known_count = count_mod_fast(ulp, -half_ulp, den, SIG_MIN, SIG_MAX)
     
-    TRIM_BITS = 64 + 4
+    TRIM_BITS = FRAC_OFFSET
     NUM =  p10 << (h + 1)
-    DEN =  0xA_0000000000000000_0000000000000000 # 10 << 128
-    TOP1 = (10 << (64 - 4)) - ((p10 << h) >> (64 + 4)) - 1
-    TOP2 = (10 << (64 - 4)) - ((p10 << h) >> (64 + 4)) - 1
-    TOP1 = ((TOP1 << TRIM_BITS))
-    TOP2 = ((TOP2 << TRIM_BITS)) | ((1 << TRIM_BITS) - 1)
+    DEN =  1 << (128 + EXTRA_SHIFT)
+    scaled_half_ulp = p10 >> (64 + EXTRA_SHIFT - h)
+    target = (1 << 64) - scaled_half_ulp - 1
+    TOP1 = (target << TRIM_BITS)
+    TOP2 = (target << TRIM_BITS) | ((1 << TRIM_BITS) - 1)
 
     count = calc_mod_mul_count_fast(NUM, DEN, SIG_MIN, SIG_MAX, TOP1, TOP2)
     assert count == known_count
@@ -910,7 +910,7 @@ def find_d2s_edge_cases():
     for params in list: find_d2s_edge_case_2(*params)
     
     print("--- Edge case 3 ---")
-    #for params in list: find_d2s_edge_case_3(*params)
+    for params in list: find_d2s_edge_case_3(*params)
 
     print("==========================================================")
     print("Finished")
