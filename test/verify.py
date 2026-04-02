@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 A script to verify the correctness of the yy_double algorithm.
 This script requires Python 3.8 or higher.
@@ -794,6 +795,9 @@ SIG_BIN_MAX = (1 << F64_SIG_BITS) | F64_SIG_RAW_MAX # 0x1FFFFFFFFFFFFF
 EXP_BIN_MIN = F64_MIN_BIN_EXP - F64_SIG_BITS # -1022 - 52 = -1074 (subnormal)
 EXP_BIN_MAX = F64_MAX_BIN_EXP - F64_SIG_BITS #  1023 - 52 = 971 (max normal)
 
+FRAC_BITS = 6
+FRAC_OFFSET = 64 + FRAC_BITS
+
 
 # ==============================================================================
 # Double to string conversion edge cases
@@ -801,16 +805,20 @@ EXP_BIN_MAX = F64_MAX_BIN_EXP - F64_SIG_BITS #  1023 - 52 = 971 (max normal)
 
 def find_d2s_edge_case_1(e2, e10, h, p10, p10_exact, SIG_MIN, SIG_MAX):
 
+    NUM = (p10 << (h + 1)) * 10
+    DEN = 1 << (128 + FRAC_BITS)
+
     if p10_exact:
-        NUM = p10 << (h + 1)
-        NUM = NUM & 0xFFFFFFFFFFFFFFFF
+        NUM = NUM & ((1 << FRAC_OFFSET) - 1)
         if NUM == 0:
             return
-    
-    NUM = p10 << (h + 1)
-    DEN =  0x1_0000000000000000_0000000000000000
-    TOP1 = 0x0_7FFFFFFFFFFFFFFF_0000000000000000
-    TOP2 = 0x0_8000000000000000_FFFFFFFFFFFFFFFF
+
+    # The * 10 in NUM folds digit extraction into the modular product, but the
+    # lower FRAC_OFFSET bits of the original product contribute a carry of up to
+    # floor((2**FRAC_OFFSET - 1) * 10 / 2**FRAC_OFFSET) = 9 into the digit_frac
+    # position. The +9 in TOP2 accounts for this.
+    TOP1 = (0x7FFFFFFFFFFFFFFF << FRAC_OFFSET)
+    TOP2 = (0x8000000000000009 << FRAC_OFFSET) | ((1 << FRAC_OFFSET) - 1)
     
     count = calc_mod_mul_count_fast(NUM, DEN, SIG_MIN, SIG_MAX, TOP1, TOP2, print_all=True)
     assert count >= 0
@@ -875,10 +883,10 @@ def find_d2s_edge_cases():
     list = []
     for e2 in range(EXP_BIN_MIN, EXP_BIN_MAX + 1):
         k = (e2 * 315653) >> 20
-        h = e2 + ((-k * 217707) >> 16); # h = [0, 1, 2, 3]
+        h = e2 + (((-k - 1) * 217707) >> 16) + FRAC_BITS; # h = [2, 3, 4, 5]
 
         # Calculate the power of 10
-        e10 = -k
+        e10 = -k - 1
         p10 = calc_pow10_u128(e10)
 
         # The power of 10 is exact or rounded down
@@ -897,10 +905,10 @@ def find_d2s_edge_cases():
     for params in list: find_d2s_edge_case_1(*params)
 
     print("--- Edge case 2 ---")
-    for params in list: find_d2s_edge_case_2(*params)
+    #for params in list: find_d2s_edge_case_2(*params)
     
     print("--- Edge case 3 ---")
-    for params in list: find_d2s_edge_case_3(*params)
+    #for params in list: find_d2s_edge_case_3(*params)
 
     print("==========================================================")
     print("Finished")
