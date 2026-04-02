@@ -813,12 +813,14 @@ def find_d2s_edge_case_1(e2, e10, h, p10, p10_exact, SIG_MIN, SIG_MAX):
         if NUM == 0:
             return
 
+    BIAS = 6 # Bias used to correctly handle boundary cases.
+
     # The * 10 in NUM folds digit extraction into the modular product, but the
     # lower FRAC_OFFSET bits of the original product contribute a carry of up to
     # floor((2**FRAC_OFFSET - 1) * 10 / 2**FRAC_OFFSET) = 9 into the digit_frac
     # position. The +9 in TOP2 accounts for this.
-    TOP1 = (0x7FFFFFFFFFFFFFFF << FRAC_OFFSET)
-    TOP2 = (0x8000000000000009 << FRAC_OFFSET) | ((1 << FRAC_OFFSET) - 1)
+    TOP1 = ((0x7FFFFFFFFFFFFFFF - BIAS) << FRAC_OFFSET)
+    TOP2 = ((0x8000000000000009 - BIAS) << FRAC_OFFSET) | ((1 << FRAC_OFFSET) - 1)
     
     count = calc_mod_mul_count_fast(NUM, DEN, SIG_MIN, SIG_MAX, TOP1, TOP2, print_all=True)
     assert count >= 0
