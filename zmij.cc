@@ -825,8 +825,7 @@ ZMIJ_INLINE auto to_digits(char* buffer, uint64_t value,
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
   const __m128i zeros = _mm_load_si128(m128ptr(&c->zeros));
-  auto unshuffled_bcd =
-      to_unshuffled_digits(abbccddee, ffgghhii, *c);
+  auto unshuffled_bcd = to_unshuffled_digits(abbccddee, ffgghhii, *c);
 #  if ZMIJ_USE_SSE4_1
   const __m128i bswap = _mm_load_si128(m128ptr(&c->bswap));
   auto bcd = _mm_shuffle_epi8(unshuffled_bcd, bswap);  // SSSE3
@@ -857,7 +856,8 @@ ZMIJ_INLINE auto to_digits<32>(char* buffer, uint64_t value,
 #if ZMIJ_USE_SIMD_SHUFFLE
 struct shuffle_table {
   constexpr static bool merge_tables = ZMIJ_USE_SSE4_1;
-  constexpr static size_t table_size = (1 + merge_tables) * (float_traits<double>::max_fixed_dec_exp + 2);
+  constexpr static size_t table_size =
+      (1 + merge_tables) * (float_traits<double>::max_fixed_dec_exp + 2);
   alignas(16 * (1 + merge_tables)) uint8_t data[table_size][16] = {};
   constexpr shuffle_table() {
     for (int i = 0; i < float_traits<double>::max_fixed_dec_exp + 2; ++i) {
@@ -934,8 +934,7 @@ auto write_fixed_double_simd(char* buffer, uint64_t dec_sig, int dec_exp,
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
   __m128i zeros = _mm_load_si128(m128ptr(&c->zeros));
 
-  auto reversed_bcd =
-      to_unshuffled_digits(bbccddee, ffgghhii, *c);
+  auto reversed_bcd = to_unshuffled_digits(bbccddee, ffgghhii, *c);
 
   // Count trailing zeros.
   __m128i mask128 = _mm_cmpgt_epi8(reversed_bcd, _mm_setzero_si128());
@@ -946,9 +945,11 @@ auto write_fixed_double_simd(char* buffer, uint64_t dec_sig, int dec_exp,
   len = 16 - ctz(mask);
 #  endif
 
-  __m128i shuffler = _mm_load_si128(m128ptr(shuffles.get_shuffler(point_index)));
+  __m128i shuffler =
+      _mm_load_si128(m128ptr(shuffles.get_shuffler(point_index)));
   __m128i bcd = _mm_shuffle_epi8(reversed_bcd, shuffler);  // SSSE3
-  __m128i point_mask = _mm_load_si128(m128ptr(shuffles.get_point_and_zeros(point_index)));
+  __m128i point_mask =
+      _mm_load_si128(m128ptr(shuffles.get_point_and_zeros(point_index)));
   __m128i digits_with_point = _mm_or_si128(bcd, point_mask);
 
   // Write 20 bytes non-overlappingly.
@@ -1020,68 +1021,94 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
   using traits = float_traits<Float>;
   int64_t bin_exp = raw_exp - traits::exp_offset;
   constexpr int num_bits = std::numeric_limits<UInt>::digits;
-  // An optimization from yy by Yaoyuan Guo:
-  while (regular) [[ZMIJ_LIKELY]] {
-    constexpr uint64_t log10_2_sig = 78'913;
-    constexpr int log10_2_exp = 18;
-    int dec_exp = use_umul128_hi64
-                      ? umul128_hi64(bin_exp, log10_2_sig << (64 - log10_2_exp))
-                      : compute_dec_exp(bin_exp);
-    uint64_t even = 1 - (bin_sig & 1);
-    constexpr uint64_t half = uint64_t(1) << 63;
 
-    if (num_bits == 64) {
-      // An optimization by Xiang JunBo:
-      // Scale by 10**(-dec_exp-1) to directly produce the shorter candidate
-      // (15-16 digits), deriving the extra digit from the fractional part.
-      // This eliminates div10 from the critical path.
-      constexpr int extra_shift = exp_shift_table::extra_shift;
+  constexpr uint64_t log10_2_sig = 78'913;
+  constexpr int log10_2_exp = 18;
+  int dec_exp = use_umul128_hi64
+                    ? umul128_hi64(bin_exp, log10_2_sig << (64 - log10_2_exp))
+                    : compute_dec_exp(bin_exp);
+  uint64_t even = 1 - (bin_sig & 1);
+  constexpr uint64_t half = uint64_t(1) << 63;
+  constexpr int extra_shift = exp_shift_table::extra_shift;
+
+  if (num_bits == 64) {
+    // value = 5.0507837461e-27
+    // next  = 5.0507837461000010e-27
+    //
+    // c = integral.fractional' = 5050783746100000.3153987... (value)
+    //                            5050783746100001.0328635... (next)
+    //          scaled_half_ulp =                0.3587324...
+    //
+    // fractional = fractional' * 2**64 = 5818079786399166407
+    //
+    //    5050783746100000.0       c               upper    5050783746100001.0
+    //             s              l|   L             |               S
+    // ──┬────┬────┼────┬────┬────┼*-──┼────┬────┬───*┬────┬────┬────┼-*--┬───
+    //  .8   .9   .0   .1   .2   .3   .4   .5   .6   .7   .8   .9   .0 | .1
+    //           └─────────────────┼─────────────────┘                next
+    //                            1ulp
+    //
+    // s - shorter underestimate, S - shorter overestimate
+    // l - longer underestimate,  L - longer overestimate
+
+    if (!regular) [[ZMIJ_UNLIKELY]] {
+      int dec_exp = compute_dec_exp(bin_exp, false);
       unsigned char shift =
-          exp_shift_table::enable
-              ? exp_shifts.data[bin_exp + traits::exp_offset]
-              : compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
-      ZMIJ_ASM(("" : "+r"(dec_exp)));  // Force 32-bit reg for sxtw addressing.
+          compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
       uint128 pow10 = pow10_significands[-dec_exp - 1];
       uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
 
       long long integral = p.hi >> extra_shift;
       uint64_t fractional = p.hi << (64 - extra_shift) | p.lo >> extra_shift;
-
-      // value = 5.0507837461e-27
-      // next  = 5.0507837461000010e-27
-      //
-      // c = integral.fractional' = 5050783746100000.3153987... (value)
-      //                            5050783746100001.0328635... (next)
-      //          scaled_half_ulp =                0.3587324...
-      //
-      // fractional = fractional' * 2**64 = 5818079786399166407
-      //
-      //    5050783746100000.0       c               upper    5050783746100001.0
-      //             s              l|   L             |               S
-      // ──┬────┬────┼────┬────┬────┼*-──┼────┬────┬───*┬────┬────┬────┼-*--┬───
-      //  .8   .9   .0   .1   .2   .3   .4   .5   .6   .7   .8   .9   .0 | .1
-      //           └─────────────────┼─────────────────┘                next
-      //                            1ulp
-      //
-      // s - shorter underestimate, S - shorter overestimate
-      // l - longer underestimate,  L - longer overestimate
-
       uint64_t scaled_half_ulp = pow10.hi >> (extra_shift + 1 - shift);
-      if (fractional == scaled_half_ulp) [[ZMIJ_UNLIKELY]]
-        break;
+      uint64_t down_half_ulp = scaled_half_ulp >> 1;
 
-      scaled_half_ulp += even;
-      bool round_up = fractional + scaled_half_ulp < fractional;
-      bool round_down = scaled_half_ulp > fractional;
+      bool round_up = scaled_half_ulp > ~uint64_t(0) - fractional;
+      bool round_down = down_half_ulp > fractional;
       integral += round_up;
 
-      // Derive the extra digit from the fractional part (parallel with
-      // rounding). +6 is needed for boundary cases found by verify.py.
       uint64_t rem = fractional * 10;
-      int digit = int(umul128_hi64(fractional, 10) + (rem + half + 6 < rem));
-      return {integral, dec_exp, (round_up + round_down) ? 0 : digit};
+      int digit = int(umul128_hi64(fractional, 10));
+      // Lower midpoint of the asymmetric interval in digit space.
+      uint64_t lo_frac = fractional - down_half_ulp;
+      uint64_t lo_rem = lo_frac * 10;
+      int lo = int(umul128_hi64(lo_frac, 10) + (lo_rem != 0));
+      // +6 bias for pow10 truncation, or round-to-even on exact tie.
+      digit += (rem == half) ? (digit & 1) : int(rem + half + 6 < rem);
+      if (digit < lo) digit = lo;
+      return {integral, dec_exp, (round_up || round_down) ? 0 : digit};
     }
 
+    // An optimization by Xiang JunBo:
+    // Scale by 10**(-dec_exp-1) to directly produce the shorter candidate
+    // (15-16 digits), deriving the extra digit from the fractional part.
+    // This eliminates div10 from the critical path.
+    unsigned char shift =
+        exp_shift_table::enable
+            ? exp_shifts.data[bin_exp + traits::exp_offset]
+            : compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
+    ZMIJ_ASM(("" : "+r"(dec_exp)));  // Force 32-bit reg for sxtw addressing.
+    uint128 pow10 = pow10_significands[-dec_exp - 1];
+    uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
+
+    long long integral = p.hi >> extra_shift;
+    uint64_t fractional = p.hi << (64 - extra_shift) | p.lo >> extra_shift;
+
+    uint64_t scaled_half_ulp = pow10.hi >> (extra_shift + 1 - shift);
+
+    scaled_half_ulp += even;
+    bool round_up = fractional + scaled_half_ulp < fractional;
+    bool round_down = scaled_half_ulp > fractional;
+    integral += round_up;
+
+    // Derive the extra digit from the fractional part (parallel with
+    // rounding). +6 is needed for boundary cases found by verify.py.
+    uint64_t rem = fractional * 10;
+    int digit = int(umul128_hi64(fractional, 10) + (rem + half + 6 < rem));
+    return {integral, dec_exp, (round_up + round_down) ? 0 : digit};
+  }
+
+  while (regular) [[ZMIJ_LIKELY]] {
     // Float path: original 10**(-dec_exp) scaling with mod-10 rounding.
     unsigned char exp_shift = compute_exp_shift(bin_exp, dec_exp);
     uint128 pow10 = pow10_significands[-dec_exp];
