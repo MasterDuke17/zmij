@@ -1117,11 +1117,6 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
     UInt integral = uint64_t(p >> 64);
     uint64_t fractional = uint64_t(p);
 
-    // Exact half-ulp tie when rounding to nearest integer.
-    int64_t cmp = int64_t(fractional - half);
-    if (cmp == 0) [[ZMIJ_UNLIKELY]]
-      break;
-
     // An optimization of integral % 10 by Dougall Johnson.
     long long div10 = ::div10(integral);
     uint64_t digit = integral - div10 * 10;
@@ -1153,7 +1148,10 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
     bool round_down = scaled_sig_mod10 < half_ulp + even;
     bool round_up = ten < upper;
     int round = int(round_down) + int(round_up);
-    int d = int(digit) + (cmp >= 0);
+    int64_t cmp = int64_t(fractional - half);
+    int d = int(digit) + (cmp > 0);
+    if (cmp == 0) [[ZMIJ_UNLIKELY]]
+      d += int(integral & 1);
     long long dec_sig = div10 + int(round_up);
     return {dec_sig * 10 + (round ? 0 : d), dec_exp};
   }
