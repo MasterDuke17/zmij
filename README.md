@@ -159,7 +159,7 @@ We would like to express our gratitude to the individuals who have made
 * Xiang JunBo ([@xjb714](https://github.com/xjb714)) - Contributed
   high-performance BCD digit extraction algorithm and additional optimization
   ideas used across scalar and SIMD code paths. The double path uses xjb's
-  $10^(-k-1)$ scaling to eliminate a division from the critical path.
+  $10^{-k-1}$ scaling to eliminate a division from the critical path.
 
 * David Tolnay ([@dtolnay](https://github.com/dtolnay)) - Created and maintains
   the [Rust port of Żmij](https://github.com/dtolnay/zmij), expanding the
