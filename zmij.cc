@@ -1037,7 +1037,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
     //
     // c = integral.fractional' = 5050783746100000.3153987... (value)
     //                            5050783746100001.0328635... (next)
-    //          scaled_half_ulp =                0.3587324...
+    //                 half_ulp =                0.3587324...
     //
     // fractional = fractional' * 2**64 = 5818079786399166407
     //
@@ -1060,10 +1060,10 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
 
       long long integral = p.hi >> extra_shift;
       uint64_t fractional = p.hi << (64 - extra_shift) | p.lo >> extra_shift;
-      uint64_t scaled_half_ulp = pow10.hi >> (extra_shift + 1 - shift);
-      uint64_t down_half_ulp = scaled_half_ulp >> 1;
+      uint64_t half_ulp = pow10.hi >> (extra_shift + 1 - shift);
+      uint64_t down_half_ulp = half_ulp >> 1;
 
-      bool round_up = scaled_half_ulp > ~uint64_t(0) - fractional;
+      bool round_up = half_ulp > ~uint64_t(0) - fractional;
       bool round_down = down_half_ulp > fractional;
       integral += round_up;
 
@@ -1094,11 +1094,11 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
     long long integral = p.hi >> extra_shift;
     uint64_t fractional = p.hi << (64 - extra_shift) | p.lo >> extra_shift;
 
-    uint64_t scaled_half_ulp = pow10.hi >> (extra_shift + 1 - shift);
+    uint64_t half_ulp = pow10.hi >> (extra_shift + 1 - shift);
 
-    scaled_half_ulp += even;
-    bool round_up = fractional + scaled_half_ulp < fractional;
-    bool round_down = scaled_half_ulp > fractional;
+    half_ulp += even;
+    bool round_up = fractional + half_ulp < fractional;
+    bool round_down = half_ulp > fractional;
     integral += round_up;
 
     // Derive the extra digit from the fractional part (parallel with
@@ -1137,12 +1137,12 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
     uint64_t scaled_sig_mod10 =
         (digit << num_fractional_bits) | (fractional >> num_integral_bits);
 
-    // scaled_half_ulp = 0.5 * pow10 in the fixed-point format.
+    // half_ulp = 0.5 * pow10 in the fixed-point format.
     // dec_exp is chosen so that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1).
     // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after scaling
     // by 10**dec_exp. Add 1 to combine the shift with division by two.
-    uint64_t scaled_half_ulp = pow10.hi >> (num_integral_bits - exp_shift + 1);
-    uint64_t upper = scaled_sig_mod10 + scaled_half_ulp;
+    uint64_t half_ulp = pow10.hi >> (num_integral_bits - exp_shift + 1);
+    uint64_t upper = scaled_sig_mod10 + half_ulp;
 
     // Check for near-boundary case when rounding up to nearest 10;
     // equivalent to upper == ten || upper == ten - 1.
@@ -1150,7 +1150,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
     if (ten - upper <= 1u) [[ZMIJ_UNLIKELY]]
       break;
 
-    bool round_down = scaled_sig_mod10 < scaled_half_ulp + even;
+    bool round_down = scaled_sig_mod10 < half_ulp + even;
     bool round_up = ten < upper;
     int round = int(round_down) + int(round_up);
     int d = int(digit) + (cmp >= 0);
