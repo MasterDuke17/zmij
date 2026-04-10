@@ -203,11 +203,10 @@ inline auto ctz(uint64_t x) noexcept -> int {
 #if ZMIJ_HAS_BUILTIN(__builtin_ctzll)
   return __builtin_ctzll(x);
 #elif defined(_M_AMD64) || defined(_M_ARM64)
-  unsigned long r;
-  _BitScanForward64(&r, x);
-  return r;
+  unsigned long idx;
+  _BitScanForward64(&idx, x);
+  return idx;
 #elif ZMIJ_MSC_VER
-  // Fallback to the 32-bit BSF instruction.
   unsigned long idx;
   if (_BitScanForward(&idx, uint32_t(x))) return idx;
   _BitScanForward(&idx, uint32_t(x >> 32));
@@ -868,33 +867,24 @@ struct shuffle_table {
   constexpr shuffle_table() {
     for (int i = 0; i < float_traits<double>::max_fixed_dec_exp + 2; ++i) {
       uint8_t v = 0xf;
-      if (!merge_tables) {
-        for (int j = 0; j < 16; ++j) data[i][j] = i == j ? 0x80 : v--;
-      } else {
-        for (int j = 0; j < 16; ++j) {
-          data[2 * i][j] = i == j ? 0x80 : v--;
-          data[2 * i + 1][j] = i == j ? '.' : '0';
-        }
+      for (int j = 0; j < 16; ++j) {
+        data[(1 + merge_tables) * i][j] = i == j ? 0x80 : v--;
+        if (merge_tables) data[2 * i + 1][j] = i == j ? '.' : '0';
       }
     }
   }
 
   ZMIJ_INLINE const uint8_t* get_shuffler(int index) const noexcept {
     assert((1 + merge_tables) * index < table_size);
-    if (merge_tables) {
-      // This form ensures that gcc combines the address calculation with the
-      // one in get_point_and_zeros below.
-      return &data[0][0] + 32 * index;
-    }
-    return data[index];
+    // GCC combines the address calculation with the one in get_point_and_zeros
+    // below.
+    return merge_tables ? data[0] + 32 * index : &data[index][0];
   }
 
   ZMIJ_INLINE const uint8_t* get_point_and_zeros(int index) const noexcept {
-    assert(merge_tables);
-    assert(2 * index + 1 < table_size);
-    // This form ensures that gcc combines the address calculation with the
-    // one in get_shuffler above.
-    return &data[0][0] + 32 * index + 16;
+    assert(merge_tables && 2 * index + 1 < table_size);
+    // GCC combines the address calculation with the one in get_shuffler above.
+    return data[0] + 32 * index + 16;
   }
 };
 constexpr shuffle_table shuffles;
