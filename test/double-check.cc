@@ -233,8 +233,7 @@ void check_exact_half_cases(int start_bin_exp = -1) {
   done = true;
   progress.join();
   auto finish = std::chrono::steady_clock::now();
-  double elapsed =
-      std::chrono::duration<double>(finish - start).count();
+  double elapsed = std::chrono::duration<double>(finish - start).count();
   fmt::print("Checked {:.6e} exact .5 cases in {}, {} errors\n",
              double(total.load()), format_duration(int(elapsed)),
              errors.load());

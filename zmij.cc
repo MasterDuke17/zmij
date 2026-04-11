@@ -791,7 +791,7 @@ template <int num_bits> struct dec_digits {
 };
 
 template <> struct dec_digits<64> {
-  #if ZMIJ_USE_NEON
+#if ZMIJ_USE_NEON
   uint16x8_t digits;
 #elif ZMIJ_USE_SSE
   __m128i digits;
