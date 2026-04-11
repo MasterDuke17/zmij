@@ -11,10 +11,20 @@
 
 #include "../zmij.cc"
 #include "dragonbox/dragonbox.h"
-#include "fmt/base.h"
+#include "fmt/format.h"
 #include "modular-search.h"
 
 namespace {
+
+auto format_duration(int seconds, bool show_seconds = true) -> std::string {
+  int d = seconds / 86400, h = seconds / 3600 % 24, m = seconds / 60 % 60;
+  std::string s;
+  if (d) s += fmt::format("{}d ", d);
+  if (d || h) s += fmt::format("{:02}h ", h);
+  s += fmt::format("{:02}m", m);
+  if (show_seconds) s += fmt::format(" {:02}s", seconds % 60);
+  return s;
+}
 
 // clang-format off
 const uint64_t pow10[] = {
@@ -157,7 +167,23 @@ void check_exact_half_cases() {
   fmt::print("Checking exact .5 cases with {} threads\n", num_threads);
 
   std::atomic<uint64_t> total = 0, errors = 0;
+  std::atomic<bool> done = false;
   auto start = std::chrono::steady_clock::now();
+
+  std::thread progress([&]() {
+    for (;;) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      auto now = std::chrono::steady_clock::now();
+      double elapsed = std::chrono::duration<double>(now - start).count();
+      double rate = total / elapsed;
+      int eta = int((6.0e15 - total) / rate);
+      fmt::print(stderr, "\r{:.2e} checked  Elapsed: {}  ETA: {}",
+                 double(total.load()), format_duration(int(elapsed)),
+                 format_duration(eta, false));
+      if (done) break;
+    }
+    fmt::print(stderr, "\n");
+  });
 
   // bin_exp >= 0 produces integers with no fractional .5 boundary.
   for (int bin_exp = -1;; --bin_exp) {
@@ -169,7 +195,7 @@ void check_exact_half_cases() {
 
     uint64_t count = uint64_t(1) << (traits::num_sig_bits - num_fixed_bits);
     auto work = [=, &total, &errors](uint64_t b_first, uint64_t b_last) {
-      uint64_t local_errors = 0;
+      uint64_t local_errors = 0, local_count = 0;
       for (uint64_t b = b_first; b < b_last; ++b) {
         uint64_t bin_sig = traits::implicit_bit | (b << num_fixed_bits) |
                            (1ULL << (num_fixed_bits - 1));
@@ -178,34 +204,36 @@ void check_exact_half_cases() {
         bool has_errors = false;
         if (!verify(bits, bin_sig, bin_exp, raw_exp, has_errors))
           ++local_errors;
+        if ((++local_count & ((1 << 20) - 1)) == 0) {
+          total += 1 << 20;
+          local_count = 0;
+        }
       }
-      total += b_last - b_first;
+      total += local_count;
       errors += local_errors;
     };
 
-    if (count >= num_threads * 1024) {
-      std::vector<std::thread> threads(num_threads);
-      for (unsigned i = 0; i < num_threads; ++i) {
-        uint64_t b_first = count * i / num_threads;
-        uint64_t b_last = count * (i + 1) / num_threads;
-        threads[i] = std::thread(work, b_first, b_last);
-      }
-      for (auto& t : threads) t.join();
-    } else {
+    if (count < num_threads * 1024) {
       work(0, count);
+      continue;
     }
-
-    auto now = std::chrono::steady_clock::now();
-    double elapsed = std::chrono::duration<double>(now - start).count();
-    fmt::print(stderr, "\rbin_exp={:4d}  {:.2e} checked  {:.1f}s",
-               bin_exp, double(total.load()), elapsed);
+    std::vector<std::thread> threads(num_threads);
+    for (unsigned i = 0; i < num_threads; ++i) {
+      uint64_t b_first = count * i / num_threads;
+      uint64_t b_last = count * (i + 1) / num_threads;
+      threads[i] = std::thread(work, b_first, b_last);
+    }
+    for (auto& t : threads) t.join();
   }
 
+  done = true;
+  progress.join();
   auto finish = std::chrono::steady_clock::now();
   double elapsed =
       std::chrono::duration<double>(finish - start).count();
-  fmt::print("\nChecked {:.6e} exact .5 cases in {:.1f}s, {} errors\n",
-             double(total.load()), elapsed, errors.load());
+  fmt::print("Checked {:.6e} exact .5 cases in {}, {} errors\n",
+             double(total.load()), format_duration(int(elapsed)),
+             errors.load());
 }
 
 }  // namespace
