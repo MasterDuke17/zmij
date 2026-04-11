@@ -162,11 +162,13 @@ void dispatch(int thread_index, int raw_exp, uint64_t bin_sig_first,
 // where num_fixed_bits = dec_exp - bin_exp,
 // dec_exp = floor(bin_exp * log10(2)),
 // and num_fixed_bits in [1, num_sig_bits].
-void check_exact_half_cases() {
+void check_exact_half_cases(int start_bin_exp = -1) {
   unsigned num_threads = std::thread::hardware_concurrency();
-  fmt::print("Checking exact .5 cases with {} threads\n", num_threads);
+  fmt::print("Checking exact .5 cases from bin_exp={} with {} threads\n",
+             start_bin_exp, num_threads);
 
   std::atomic<uint64_t> total = 0, errors = 0;
+  std::atomic<int> current_bin_exp = start_bin_exp;
   std::atomic<bool> done = false;
   auto start = std::chrono::steady_clock::now();
 
@@ -177,20 +179,22 @@ void check_exact_half_cases() {
       double elapsed = std::chrono::duration<double>(now - start).count();
       double rate = total / elapsed;
       int eta = int((6.0e15 - total) / rate);
-      fmt::print(stderr, "\r{:.2e} checked  Elapsed: {}  ETA: {}",
-                 double(total.load()), format_duration(int(elapsed)),
-                 format_duration(eta, false));
+      fmt::print(stderr,
+                 "\rbin_exp={:4d}  {:.2e} checked  Elapsed: {}  ETA: {}   ",
+                 current_bin_exp.load(), double(total.load()),
+                 format_duration(int(elapsed)), format_duration(eta, false));
       if (done) break;
     }
     fmt::print(stderr, "\n");
   });
 
   // bin_exp >= 0 produces integers with no fractional .5 boundary.
-  for (int bin_exp = -1;; --bin_exp) {
+  for (int bin_exp = start_bin_exp;; --bin_exp) {
     int dec_exp = compute_dec_exp(bin_exp);
     int num_fixed_bits = dec_exp - bin_exp;
     if (num_fixed_bits < 1) continue;
     if (num_fixed_bits > traits::num_sig_bits) break;
+    current_bin_exp = bin_exp;
     int raw_exp = bin_exp + traits::exp_offset;
 
     uint64_t count = uint64_t(1) << (traits::num_sig_bits - num_fixed_bits);
@@ -239,13 +243,15 @@ void check_exact_half_cases() {
 }  // namespace
 
 auto main(int argc, char** argv) -> int {
-  if (argc == 2 && strcmp(argv[1], "half") == 0) {
-    check_exact_half_cases();
+  if (argc >= 2 && strcmp(argv[1], "half") == 0) {
+    int start_bin_exp = -1;
+    if (argc >= 3) sscanf(argv[2], "%d", &start_bin_exp);
+    check_exact_half_cases(start_bin_exp);
     return 0;
   }
 
   if (argc != 2) {
-    fmt::print(stderr, "Usage: {} <raw_exp | half>\n", argv[0]);
+    fmt::print(stderr, "Usage: {} <raw_exp | half [start_bin_exp]>\n", argv[0]);
     return 1;
   }
 
