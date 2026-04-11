@@ -786,14 +786,18 @@ ZMIJ_INLINE auto to_unshuffled_digits(uint64_t value) -> uint8x16_t {
 #endif
 
 template <int num_bits> struct dec_digits {
-#if ZMIJ_USE_NEON
-  using digits_type = uint16x8_t;
+  uint64_t digits;
+  int num_digits;
+};
+
+template <> struct dec_digits<64> {
+  #if ZMIJ_USE_NEON
+  uint16x8_t digits;
 #elif ZMIJ_USE_SSE
-  using digits_type = __m128i;
+  __m128i digits;
 #else
-  using digits_type = uint128;
+  uint128 digits;
 #endif
-  std::conditional_t<num_bits == 64, digits_type, uint64_t> digits;
   int num_digits;
 };
 
