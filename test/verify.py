@@ -480,10 +480,23 @@ def test_gaps_calc():
     print("--- done ---")
 
 
+def _sig_e2_to_double(sig: int, e2) -> float:
+    """Convert a significand and binary exponent to a float64."""
+    if e2 is None:
+        return None
+    if e2 == EXP_BIN_MIN:
+        bits = sig
+    else:
+        biased_exp = e2 + F64_SIG_BITS + 1023
+        bits = (biased_exp << F64_SIG_BITS) | (sig & ((1 << F64_SIG_BITS) - 1))
+    return struct.unpack('d', struct.pack('Q', bits))[0]
+
+
 def calc_mod_mul_count_fast(NUM: int, MOD: int, 
                             X_MIN: int, X_MAX: int, 
                             Y_MIN: int, Y_MAX: int,
-                            print_all: bool = False) -> int:
+                            print_all: bool = False,
+                            e2: int = None) -> int:
     """
     Given the equation `y = NUM * x % MOD`,
     where x is in the range [x_min, x_max], and y is in the range [y_min, y_max],
@@ -520,7 +533,7 @@ def calc_mod_mul_count_fast(NUM: int, MOD: int,
             if Y_MIN <= y <= Y_MAX:
                 x_count += 1
                 if print_all:
-                    print(f"    x: 0x{x:X}, y: 0x{y:X}")
+                    print(f"    x: 0x{x:X}, y: 0x{y:X}, double: {_sig_e2_to_double(x, e2)}")
         return x_count
 
     gcd = math.gcd(NUM, MOD)
@@ -537,7 +550,7 @@ def calc_mod_mul_count_fast(NUM: int, MOD: int,
         if y_min == 0:
             if print_all:
                 for x in range(X_MIN, X_MAX + 1):
-                    print(f"    x: 0x{x:X}, y: 0x0")
+                    print(f"    x: 0x{x:X}, y: 0x0, double: {_sig_e2_to_double(x, e2)}")
             return X_MAX - X_MIN + 1
         else:
             return 0
@@ -557,7 +570,7 @@ def calc_mod_mul_count_fast(NUM: int, MOD: int,
                 for n in range(n_min, n_max + 1):
                     x = x_base + n * MOD
                     y = NUM * x % MOD
-                    print(f"    x: 0x{x:X}, y: 0x{y:X}")
+                    print(f"    x: 0x{x:X}, y: 0x{y:X}, double: {_sig_e2_to_double(x, e2)}")
             return x_count
         else:
             return 0
@@ -591,7 +604,7 @@ def calc_mod_mul_count_fast(NUM: int, MOD: int,
                 x = x1 + n * gap
                 y = x * NUM % MOD
                 assert y in range(Y_MIN, Y_MAX + 1)
-                print(f"    x: 0x{x:X}, y: 0x{y:X}")
+                print(f"    x: 0x{x:X}, y: 0x{y:X}, double: {_sig_e2_to_double(x, e2)}")
         return x_count
     else:
         # there are different gaps between valid x (rare case)
@@ -603,7 +616,7 @@ def calc_mod_mul_count_fast(NUM: int, MOD: int,
                 if print_all:
                     y = x * NUM % MOD
                     assert y in range(Y_MIN, Y_MAX + 1)
-                    print(f"    x: 0x{x:X}, y: 0x{y:X}")
+                    print(f"    x: 0x{x:X}, y: 0x{y:X}, double: {_sig_e2_to_double(x, e2)}")
             gap = next((gap.value for gap in gaps if (x + gap.value) * NUM % MOD in range(Y_MIN, Y_MAX + 1)))
             x += gap
         return x_count
@@ -824,7 +837,7 @@ def find_d2s_edge_case_1(e2, e10, h, p10, p10_exact, SIG_MIN, SIG_MAX):
     TOP1 = ((0x7FFFFFFFFFFFFFFF - BIAS) << TRIM_BITS)
     TOP2 = ((0x8000000000000009 - BIAS) << TRIM_BITS) | ((1 << TRIM_BITS) - 1)
     
-    count = calc_mod_mul_count_fast(NUM, DEN, SIG_MIN, SIG_MAX, TOP1, TOP2, print_all=True)
+    count = calc_mod_mul_count_fast(NUM, DEN, SIG_MIN, SIG_MAX, TOP1, TOP2, print_all=True, e2=e2)
     assert count >= 0
     if count > 0:
         print(f"found: {count}, e2: {e2}, e10: {e10}")
