@@ -1032,134 +1032,104 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
   constexpr uint64_t half = uint64_t(1) << 63;
   constexpr int extra_shift = exp_shift_table::extra_shift;
 
-  if (num_bits == 64) {
-    // value = 5.0507837461e-27
-    // next  = 5.0507837461000010e-27
-    //
-    // c = integral.fractional' = 5050783746100000.3153987... (value)
-    //                            5050783746100001.0328635... (next)
-    //                 half_ulp =                0.3587324...
-    //
-    // fractional = fractional' * 2**64 = 5818079786399166407
-    //
-    //    5050783746100000.0       c               upper    5050783746100001.0
-    //             s              l|   L             |               S
-    // ──┬────┬────┼────┬────┬────┼*-──┼────┬────┬───*┬────┬────┬────┼-*--┬───
-    //  .8   .9   .0   .1   .2   .3   .4   .5   .6   .7   .8   .9   .0 | .1
-    //           └─────────────────┼─────────────────┘                next
-    //                            1ulp
-    //
-    // s - shorter underestimate, S - shorter overestimate
-    // l - longer underestimate,  L - longer overestimate
-
-    if (!regular) [[ZMIJ_UNLIKELY]] {
-      int dec_exp = compute_dec_exp(bin_exp, false);
-      unsigned char shift =
-          compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
-      uint128 pow10 = pow10_significands[-dec_exp - 1];
-      uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
-
-      long long integral = p.hi >> extra_shift;
-      uint64_t fractional = p.hi << (64 - extra_shift) | p.lo >> extra_shift;
-      uint64_t half_ulp = pow10.hi >> (extra_shift + 1 - shift);
-      uint64_t down_half_ulp = half_ulp >> 1;
-
-      bool round_up = half_ulp > ~uint64_t(0) - fractional;
-      bool round_down = down_half_ulp > fractional;
-      integral += round_up;
-
-      uint64_t rem = fractional * 10;
-      int digit = int(umul128_hi64(fractional, 10));
-      // Lower midpoint of the asymmetric interval in digit space.
-      uint64_t lo_frac = fractional - down_half_ulp;
-      uint64_t lo_rem = lo_frac * 10;
-      int lo = int(umul128_hi64(lo_frac, 10) + (lo_rem != 0));
-      // +6 bias for pow10 truncation, or round-to-even on exact tie.
-      digit += (rem == half) ? (digit & 1) : int(rem + half + 6 < rem);
-      if (digit < lo) digit = lo;
-      return {integral, dec_exp, (round_up || round_down) ? 0 : digit};
-    }
-
-    // An optimization by Xiang JunBo:
-    // Scale by 10**(-dec_exp-1) to directly produce the shorter candidate
-    // (15-16 digits), deriving the extra digit from the fractional part.
-    // This eliminates div10 from the critical path.
-    unsigned char shift =
-        exp_shift_table::enable
-            ? exp_shifts.data[bin_exp + traits::exp_offset]
-            : compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
-    ZMIJ_ASM(("" : "+r"(dec_exp)));  // Force 32-bit reg for sxtw addressing.
+  if (!regular) [[ZMIJ_UNLIKELY]] {
+    int dec_exp = compute_dec_exp(bin_exp, false);
+    unsigned char shift = compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
     uint128 pow10 = pow10_significands[-dec_exp - 1];
     uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
 
     long long integral = p.hi >> extra_shift;
     uint64_t fractional = p.hi << (64 - extra_shift) | p.lo >> extra_shift;
-
     uint64_t half_ulp = pow10.hi >> (extra_shift + 1 - shift);
+    uint64_t down_half_ulp = half_ulp >> 1;
 
-    half_ulp += even;
-    bool round_up = fractional + half_ulp < fractional;
+    bool round_up = half_ulp > ~uint64_t(0) - fractional;
+    bool round_down = down_half_ulp > fractional;
+    integral += round_up;
+
+    uint64_t rem = fractional * 10;
+    int digit = int(umul128_hi64(fractional, 10));
+    // Lower midpoint of the asymmetric interval in digit space.
+    uint64_t lo_frac = fractional - down_half_ulp;
+    uint64_t lo_rem = lo_frac * 10;
+    int lo = int(umul128_hi64(lo_frac, 10) + (lo_rem != 0));
+    // +6 bias for pow10 truncation, or round-to-even on exact tie.
+    digit += (rem == half) ? (digit & 1) : int(rem + half + 6 < rem);
+    if (digit < lo) digit = lo;
+    int d = (round_up || round_down) ? 0 : digit;
+    if (num_bits == 64) return {integral, dec_exp, d};
+    return {integral * 10 + d, dec_exp};
+  }
+
+  if (num_bits == 32) {
+    constexpr int extra_shift = 34;
+    unsigned char shift = compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
+    uint64_t pow10_hi = pow10_significands[-dec_exp - 1].hi;
+    uint64_t sig_hi = umul128_hi64(pow10_hi + 1, uint64_t(bin_sig) << shift);
+
+    long long integral = sig_hi >> extra_shift;
+    uint64_t fractional = sig_hi & ((1ull << extra_shift) - 1);
+
+    uint64_t half_ulp = (pow10_hi >> (65 - shift)) + even;
+    bool round_up = (fractional + half_ulp) >> extra_shift;
     bool round_down = half_ulp > fractional;
     integral += round_up;
 
-    // Derive the extra digit from the fractional part (parallel with
-    // rounding). +6 is needed for boundary cases found by verify.py.
-    uint64_t rem = fractional * 10;
-    int digit = int(umul128_hi64(fractional, 10) + (rem + half + 6 < rem));
-    if (fractional == (1ull << 62)) [[ZMIJ_UNLIKELY]]
-      digit = 2;
-    return {integral, dec_exp, (round_up + round_down) ? 0 : digit};
+    uint64_t prod = fractional * 10;
+    int digit = int(prod >> extra_shift);
+    uint64_t rem = prod & ((1ull << extra_shift) - 1);
+    digit += rem > (1ull << (extra_shift - 1)) ||
+             (rem == (1ull << (extra_shift - 1)) && (digit & 1));
+    return {integral * 10 + ((round_up + round_down) ? 0 : digit), dec_exp};
   }
 
-  while (regular) [[ZMIJ_LIKELY]] {
-    // Float path: original 10**(-dec_exp) scaling with mod-10 rounding.
-    unsigned char exp_shift = compute_exp_shift(bin_exp, dec_exp);
-    uint128 pow10 = pow10_significands[-dec_exp];
+  // An optimization by Xiang JunBo:
+  // Scale by 10**(-dec_exp-1) to directly produce the shorter candidate
+  // (15-16 digits), deriving the extra digit from the fractional part.
+  // This eliminates div10 from the critical path.
+  //
+  // value = 5.0507837461e-27
+  // next  = 5.0507837461000010e-27
+  //
+  // c = integral.fractional' = 5050783746100000.3153987... (value)
+  //                            5050783746100001.0328635... (next)
+  //                 half_ulp =                0.3587324...
+  //
+  // fractional = fractional' * 2**64 = 5818079786399166407
+  //
+  //    5050783746100000.0       c               upper    5050783746100001.0
+  //             s              l|   L             |               S
+  // ──┬────┬────┼────┬────┬────┼*-──┼────┬────┬───*┬────┬────┬────┼-*--┬───
+  //  .8   .9   .0   .1   .2   .3   .4   .5   .6   .7   .8   .9   .0 | .1
+  //           └─────────────────┼─────────────────┘                next
+  //                            1ulp
+  //
+  // s - shorter underestimate, S - shorter overestimate
+  // l - longer underestimate,  L - longer overestimate
+  unsigned char shift =
+      exp_shift_table::enable
+          ? exp_shifts.data[bin_exp + traits::exp_offset]
+          : compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
+  ZMIJ_ASM(("" : "+r"(dec_exp)));  // Force 32-bit reg for sxtw addressing.
+  uint128 pow10 = pow10_significands[-dec_exp - 1];
+  uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
 
-    uint128_t p = umul128(pow10.hi, bin_sig << exp_shift);
-    UInt integral = uint64_t(p >> 64);
-    uint64_t fractional = uint64_t(p);
+  long long integral = p.hi >> extra_shift;
+  uint64_t fractional = p.hi << (64 - extra_shift) | p.lo >> extra_shift;
 
-    // An optimization of integral % 10 by Dougall Johnson.
-    long long div10 = ::div10(integral);
-    uint64_t digit = integral - div10 * 10;
-    // or it narrows to 32-bit and doesn't use madd/msub
-    ZMIJ_ASM(("" : "+r"(digit)));
+  uint64_t half_ulp = pow10.hi >> (extra_shift + 1 - shift);
+  half_ulp += even;
+  bool round_up = fractional + half_ulp < fractional;
+  bool round_down = half_ulp > fractional;
+  integral += round_up;
 
-    // Switch to a fixed-point representation with the least significant
-    // integral digit in the upper bits and fractional digits in the lower bits.
-    constexpr int num_integral_bits = 32;
-    constexpr int num_fractional_bits = 64 - num_integral_bits;
-    constexpr uint64_t ten = uint64_t(10) << num_fractional_bits;
-    // Fixed-point remainder of the scaled significand modulo 10.
-    uint64_t scaled_sig_mod10 =
-        (digit << num_fractional_bits) | (fractional >> num_integral_bits);
-
-    // half_ulp = 0.5 * pow10 in the fixed-point format.
-    // dec_exp is chosen so that 10**dec_exp <= 2**bin_exp < 10**(dec_exp + 1).
-    // Since 1ulp == 2**bin_exp it will be in the range [1, 10) after scaling
-    // by 10**dec_exp. Add 1 to combine the shift with division by two.
-    uint64_t half_ulp = pow10.hi >> (num_integral_bits - exp_shift + 1);
-    uint64_t upper = scaled_sig_mod10 + half_ulp;
-
-    // Check for near-boundary case when rounding up to nearest 10;
-    // equivalent to upper == ten || upper == ten - 1.
-    // Case where upper == ten is insufficient: 1.342178e+08f.
-    if (ten - upper <= 1u) [[ZMIJ_UNLIKELY]]
-      break;
-
-    bool round_down = scaled_sig_mod10 < half_ulp + even;
-    bool round_up = ten < upper;
-    int round = int(round_down) + int(round_up);
-    int64_t cmp = int64_t(fractional - half);
-    int d = int(digit) + (cmp > 0);
-    if (cmp == 0) [[ZMIJ_UNLIKELY]]
-      d += int(integral & 1);
-    long long dec_sig = div10 + int(round_up);
-    return {dec_sig * 10 + (round ? 0 : d), dec_exp};
-  }
-  // Fallback to Schubfach to guarantee correctness in boundary cases.
-  return to_decimal_schubfach(bin_sig, bin_exp, regular);
+  // Derive the extra digit from the fractional part (parallel with
+  // rounding). +6 is needed for boundary cases found by verify.py.
+  uint64_t rem = fractional * 10;
+  int digit = int(umul128_hi64(fractional, 10) + (rem + half + 6 < rem));
+  if (fractional == (1ull << 62)) [[ZMIJ_UNLIKELY]]
+    digit = 2;
+  return {integral, dec_exp, (round_up + round_down) ? 0 : digit};
 }
 
 }  // namespace
