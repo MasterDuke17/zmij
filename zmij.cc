@@ -218,18 +218,6 @@ inline auto ctz(uint64_t x) noexcept -> int {
 #endif
 }
 
-// Returns true_value if lhs < rhs, else false_value, without branching.
-ZMIJ_INLINE auto select_if_less(uint64_t lhs, uint64_t rhs, int64_t true_value,
-                                int64_t false_value) -> int64_t {
-  if (!ZMIJ_X86_64 || ZMIJ_CLANG) return lhs < rhs ? true_value : false_value;
-  ZMIJ_ASM(
-      volatile("cmp %3, %2\n\t"
-               "cmovb %1, %0\n\t"  //
-               : "+r"(false_value) : "r"(true_value),
-               "r"(lhs), "r"(rhs) : "cc"));
-  return false_value;
-}
-
 struct uint128 {
   uint64_t hi;
   uint64_t lo;
