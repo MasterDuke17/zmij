@@ -619,8 +619,7 @@ inline auto write_if(char* buffer, uint32_t digit, bool condition) noexcept
   return buffer + condition;
 }
 
-#if ZMIJ_USE_SSE
-alignas(64) constexpr struct sse_constants {
+alignas(64) constexpr struct constants {
   static constexpr auto splat64(uint64_t x) -> uint128 { return {x, x}; }
   static constexpr auto splat32(uint32_t x) -> uint128 {
     return splat64(uint64_t(x) << 32 | x);
@@ -636,6 +635,20 @@ alignas(64) constexpr struct sse_constants {
            u64(d) << 24 | u64(c) << 16 | u64(b) << +8 | u64(a);
   }
 
+  uint64_t threshold = 1e15;
+  uint64_t padding = 0;
+
+#if ZMIJ_USE_NEON
+  static constexpr int32_t neg10k = -10000 + 0x10000;
+
+  using int32x4 = std::conditional_t<ZMIJ_MSC_VER != 0, int32_t[4], int32x4_t>;
+  using int16x8 = std::conditional_t<ZMIJ_MSC_VER != 0, int16_t[8], int16x8_t>;
+
+  uint64_t mul_const = 0xabcc77118461cefd;
+  uint64_t hundred_million = 100000000;
+  int32x4 multipliers32 = {div10k_sig, neg10k, div100_sig << 12, neg100};
+  int16x8 multipliers16 = {0xce0, neg10};
+#elif ZMIJ_USE_SSE
   // Ordered so that the values used to format floats fit in a single cache
   // line.
   uint128 div100 = splat32(div100_sig);
@@ -652,12 +665,14 @@ alignas(64) constexpr struct sse_constants {
   uint128 div10k = splat64(div10k_sig);
   uint128 neg10k = splat64(::neg10k);
   uint128 zeros = splat64(::zeros);
-} sse_consts;
+#endif  // ZMIJ_USE_SSE
+} consts;
 
+#if ZMIJ_USE_SSE
 using m128ptr = const __m128i*;
 
 // Converts four numbers < 10000, one in each 32bit lane, to BCD digits.
-ZMIJ_INLINE auto to_digits_4x4digits(__m128i y, const sse_constants& c) noexcept
+ZMIJ_INLINE auto to_digits_4x4digits(__m128i y, const constants& c) noexcept
     -> __m128i {
   const __m128i div100 = _mm_load_si128(m128ptr(&c.div100));
   const __m128i div10 = _mm_load_si128(m128ptr(&c.div10));
@@ -685,7 +700,7 @@ ZMIJ_INLINE auto to_digits_4x4digits(__m128i y, const sse_constants& c) noexcept
 // SSE parallel version of to_bcd8: converts bbccddee and ffgghhii into
 // individual BCD digits in SIMD lane order (caller must shuffle).
 ZMIJ_INLINE auto to_unshuffled_digits(uint32_t bbccddee, uint32_t ffgghhii,
-                                      const sse_constants& c) noexcept
+                                      const constants& c) noexcept
     -> __m128i {
   const __m128i div10k = _mm_load_si128(m128ptr(&c.div10k));
   const __m128i neg10k = _mm_load_si128(m128ptr(&c.neg10k));
@@ -702,21 +717,9 @@ ZMIJ_INLINE auto to_unshuffled_digits(uint32_t bbccddee, uint32_t ffgghhii,
 #if ZMIJ_USE_NEON
 // An optimized version for NEON by Dougall Johnson.
 
-alignas(64) static constexpr struct neon_constants {
-  static constexpr int32_t neg10k = -10000 + 0x10000;
-
-  using int32x4 = std::conditional_t<ZMIJ_MSC_VER != 0, int32_t[4], int32x4_t>;
-  using int16x8 = std::conditional_t<ZMIJ_MSC_VER != 0, int16_t[8], int16x8_t>;
-
-  uint64_t mul_const = 0xabcc77118461cefd;
-  uint64_t hundred_million = 100000000;
-  int32x4 multipliers32 = {div10k_sig, neg10k, div100_sig << 12, neg100};
-  int16x8 multipliers16 = {0xce0, neg10};
-} neon_consts;
-
 // Converts four numbers < 10000, one in each 32bit lane, to BCD digits.
 ZMIJ_INLINE auto to_digits_4x4digits(int32x4_t ddee_bbcc_hhii_ffgg,
-                                     const neon_constants& c) noexcept
+                                     const constants& c) noexcept
     -> uint8x16_t {
   // Compiler barrier, or clang breaks the subsequent MLA into UADDW + MUL.
   ZMIJ_ASM(("" : "+w"(ddee_bbcc_hhii_ffgg)));
@@ -736,7 +739,7 @@ ZMIJ_INLINE auto to_digits_4x4digits(int32x4_t ddee_bbcc_hhii_ffgg,
 // them while the shuffle runs in parallel.
 template <bool reverse_hi_lo = false>
 ZMIJ_INLINE auto to_unshuffled_digits(uint64_t value) -> uint8x16_t {
-  const auto* c = &neon_consts;
+  const auto* c = &consts;
 
   // Compiler barrier, or clang doesn't load from memory and generates 15 more
   // instructions.
@@ -797,7 +800,7 @@ auto to_bcd8(uint32_t abcdefgh) noexcept -> bcd_result {
   uint64_t result = is_big_endian ? a_b_c_d_e_f_g_h : bswap64(a_b_c_d_e_f_g_h);
   return {result, count_trailing_nonzeros(result)};
 #elif ZMIJ_USE_SSE
-  const auto* c = &sse_consts;
+  const auto* c = &consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
 #  if ZMIJ_USE_SSE4_1
@@ -818,7 +821,7 @@ auto to_bcd8(uint32_t abcdefgh) noexcept -> bcd_result {
   return {bcd, count_trailing_nonzeros(bcd)};
 #  endif
 #else   // ZMIJ_USE_NEON
-  const auto* c = &neon_consts;
+  const auto* c = &consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
   uint64_t abcd_efgh_64 =
@@ -877,7 +880,7 @@ ZMIJ_INLINE auto to_digits(char* buffer, uint64_t value,
   uint32_t abbccddee = uint32_t(value / 100'000'000);
   uint32_t ffgghhii = uint32_t(value % 100'000'000);
 
-  const auto* c = &sse_consts;
+  const auto* c = &consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
   const __m128i zeros = _mm_load_si128(m128ptr(&c->zeros));
@@ -978,7 +981,7 @@ auto write_fixed_double_simd(char* buffer, uint64_t dec_sig, int dec_exp,
 
   buffer = write_if(buffer, a, extra_digit);
 
-  const auto* c = &sse_consts;
+  const auto* c = &consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
   __m128i zeros = _mm_load_si128(m128ptr(&c->zeros));
 
@@ -1213,8 +1216,11 @@ auto write(Float value, char* buffer) noexcept -> char* {
   *buffer = '-';
   buffer += traits::is_negative(bits);
 
+  const auto* c = &consts;
+  ZMIJ_ASM(("" : "+r"(c)));
+
   to_decimal_result dec;
-  constexpr uint64_t threshold = uint64_t(traits::num_bits == 64 ? 1e15 : 1e8);
+  uint64_t threshold = uint64_t(traits::num_bits == 64 ? c->threshold : 1e8);
   if (bin_exp == 0 || bin_exp == traits::exp_mask) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) {
       memcpy(buffer, bin_sig == 0 ? "inf" : "nan", 4);
