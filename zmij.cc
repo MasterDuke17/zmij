@@ -287,6 +287,17 @@ constexpr auto umul128_hi64(uint64_t x, uint64_t y) noexcept -> uint64_t {
   return uint64_t(umul128(x, y) >> 64);
 }
 
+// Returns (x * y + c) >> 64.
+inline auto umul128_add_hi64(uint64_t x, uint64_t y, uint64_t c) noexcept
+    -> uint64_t {
+#if ZMIJ_USE_INT128
+  return uint64_t((uint128_t(x) * y + c) >> 64);
+#else
+  auto p = umul128(x, y);
+  return p.hi + (p.lo + c < p.lo);
+#endif
+}
+
 inline auto umul192_hi128(uint64_t x_hi, uint64_t x_lo, uint64_t y) noexcept
     -> uint128 {
   uint128_t p = umul128(x_hi, y);
@@ -665,7 +676,7 @@ alignas(64) constexpr struct constants {
   uint128 div10k = splat64(div10k_sig);
   uint128 neg10k = splat64(::neg10k);
   uint128 zeros = splat64(::zeros);
-#endif  // ZMIJ_USE_SSE
+#endif    // ZMIJ_USE_SSE
 } consts;
 
 #if ZMIJ_USE_SSE
@@ -700,8 +711,7 @@ ZMIJ_INLINE auto to_digits_4x4digits(__m128i y, const constants& c) noexcept
 // SSE parallel version of to_bcd8: converts bbccddee and ffgghhii into
 // individual BCD digits in SIMD lane order (caller must shuffle).
 ZMIJ_INLINE auto to_unshuffled_digits(uint32_t bbccddee, uint32_t ffgghhii,
-                                      const constants& c) noexcept
-    -> __m128i {
+                                      const constants& c) noexcept -> __m128i {
   const __m128i div10k = _mm_load_si128(m128ptr(&c.div10k));
   const __m128i neg10k = _mm_load_si128(m128ptr(&c.neg10k));
 
@@ -1174,8 +1184,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp,
 
   // Derive the extra digit from the fractional part (parallel with
   // rounding). +6 is needed for boundary cases found by verify.py.
-  uint64_t rem = fractional * 10;
-  int digit = int(umul128_hi64(fractional, 10) + (rem + half + 6 < rem));
+  int digit = int(umul128_add_hi64(fractional, 10, half + 6));
   if (fractional == (1ull << 62)) [[ZMIJ_UNLIKELY]]
     digit = 2;  // Round 2.5 to 2.
   return {integral, dec_exp, (round_up + round_down) != 0 ? 0 : digit};
