@@ -784,58 +784,55 @@ struct bcd_result {
   int len;
 };
 
-auto to_bcd8(uint32_t abcdefgh) noexcept -> bcd_result {
-#if !ZMIJ_USE_SSE && !ZMIJ_USE_NEON
-  // An optimization from Xiang JunBo.
-  // Three steps BCD. Base 10000 -> base 100 -> base 10.
-  // div and mod are evaluated simultaneously as, e.g.
-  //   (abcdefgh / 10000) << 32 + (abcdefgh % 10000)
-  //      == abcdefgh + (2**32 - 10000) * (abcdefgh / 10000)))
-  // where the division on the RHS is implemented by the usual multiply + shift
-  // trick and the fractional bits are masked away.
-  uint64_t abcd_efgh =
-      abcdefgh + neg10k * ((uint64_t(abcdefgh) * div10k_sig) >> div10k_exp);
-  uint64_t ab_cd_ef_gh =
-      abcd_efgh +
-      neg100 * (((abcd_efgh * div100_sig) >> div100_exp) & 0x7f0000007f);
-  uint64_t a_b_c_d_e_f_g_h =
-      ab_cd_ef_gh +
-      neg10 * (((ab_cd_ef_gh * div10_sig) >> div10_exp) & 0xf000f000f000f);
-  uint64_t result = is_big_endian ? a_b_c_d_e_f_g_h : bswap64(a_b_c_d_e_f_g_h);
-  return {result, count_trailing_nonzeros(result)};
-#elif ZMIJ_USE_SSE
+auto to_bcd8(uint64_t abcdefgh) noexcept -> bcd_result {
+  if (!ZMIJ_USE_SSE && !ZMIJ_USE_NEON) {
+    // An optimization from Xiang JunBo.
+    // Three steps BCD. Base 10000 -> base 100 -> base 10.
+    // div and mod are evaluated simultaneously as, e.g.
+    //   (abcdefgh / 10000) << 32 + (abcdefgh % 10000)
+    //      == abcdefgh + (2**32 - 10000) * (abcdefgh / 10000)))
+    // where the division on the RHS is implemented by the multiply + shift
+    // trick and the fractional bits are masked away.
+    uint64_t abcd_efgh =
+        abcdefgh + neg10k * ((abcdefgh * div10k_sig) >> div10k_exp);
+    uint64_t ab_cd_ef_gh =
+        abcd_efgh +
+        neg100 * (((abcd_efgh * div100_sig) >> div100_exp) & 0x7f0000007f);
+    uint64_t a_b_c_d_e_f_g_h =
+        ab_cd_ef_gh +
+        neg10 * (((ab_cd_ef_gh * div10_sig) >> div10_exp) & 0xf000f000f000f);
+    uint64_t bcd = is_big_endian ? a_b_c_d_e_f_g_h : bswap64(a_b_c_d_e_f_g_h);
+    return {bcd, count_trailing_nonzeros(bcd)};
+  }
+
   const auto* c = &consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
-#  if ZMIJ_USE_SSE4_1
-  uint64_t abcd_efgh =
-      abcdefgh + neg10k * ((uint64_t(abcdefgh) * div10k_sig) >> div10k_exp);
-  uint64_t unshuffled_bcd =
-      _mm_cvtsi128_si64(to_digits_4x4digits(_mm_set_epi64x(0, abcd_efgh), *c));
-  int len = unshuffled_bcd ? 8 - ctz(unshuffled_bcd) / 8 : 0;
-  return {bswap64(unshuffled_bcd), len};
-#  else
-  // Evaluate the 4 digit limbs and arrange them such that we get a result which
-  // is in the correct order.
-  uint64_t abcd_efgh = (uint64_t(abcdefgh) << 32) -
-                       uint64_t((10000ull << 32) - 1) *
-                           ((uint64_t(abcdefgh) * div10k_sig) >> div10k_exp);
-  uint64_t bcd =
-      _mm_cvtsi128_si64(to_digits_4x4digits(_mm_set_epi64x(0, abcd_efgh), *c));
-  return {bcd, count_trailing_nonzeros(bcd)};
-#  endif
-#else   // ZMIJ_USE_NEON
-  const auto* c = &consts;
-  ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
-
+#if ZMIJ_USE_NEON
   uint64_t abcd_efgh_64 =
-      abcdefgh + neg10k * ((uint64_t(abcdefgh) * div10k_sig) >> div10k_exp);
+      abcdefgh + neg10k * ((abcdefgh * div10k_sig) >> div10k_exp);
   int32x4_t abcd_efgh = vcombine_s32(
       vreinterpret_s32_u64(vcreate_u64(abcd_efgh_64)), vdup_n_s32(0));
   uint8x16_t digits_128 = to_digits_4x4digits(abcd_efgh, *c);
   uint8x8_t digits = vget_low_u8(digits_128);
-  uint64_t result = vget_lane_u64(vreinterpret_u64_u8(vrev64_u8(digits)), 0);
-  return {result, count_trailing_nonzeros(result)};
+  uint64_t bcd = vget_lane_u64(vreinterpret_u64_u8(vrev64_u8(digits)), 0);
+  return {bcd, count_trailing_nonzeros(bcd)};
+#elif ZMIJ_USE_SSE4_1
+  uint64_t abcd_efgh =
+      abcdefgh + neg10k * ((abcdefgh * div10k_sig) >> div10k_exp);
+  uint64_t unshuffled_bcd =
+      _mm_cvtsi128_si64(to_digits_4x4digits(_mm_set_epi64x(0, abcd_efgh), *c));
+  int len = unshuffled_bcd ? 8 - ctz(unshuffled_bcd) / 8 : 0;
+  return {bswap64(unshuffled_bcd), len};
+#elif ZMIJ_USE_SSE
+  // Evaluate the 4-digit limbs and arrange them such that we get a result which
+  // is in the correct order.
+  uint64_t abcd_efgh =
+      (abcdefgh << 32) -
+      uint64_t((10000ull << 32) - 1) * ((abcdefgh * div10k_sig) >> div10k_exp);
+  uint64_t bcd =
+      _mm_cvtsi128_si64(to_digits_4x4digits(_mm_set_epi64x(0, abcd_efgh), *c));
+  return {bcd, count_trailing_nonzeros(bcd)};
 #endif  // ZMIJ_USE_SSE
 }
 
