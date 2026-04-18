@@ -516,8 +516,9 @@ struct exp_string_table {
       uint64_t bc = abs_e % 100;
       uint64_t val = ((bc % 10 + '0') << 8) | (bc / 10 + '0');
       if (uint64_t a = abs_e / 100) val = (val << 8) | (a + '0');
-      uint64_t len =
-          e >= -4 && e < traits::max_fixed_dec_exp ? 0 : 4 + (abs_e >= 100);
+      bool is_fixed =
+          e >= traits::min_fixed_dec_exp && e <= traits::max_fixed_dec_exp;
+      uint64_t len = is_fixed ? 0 : 4 + (abs_e >= 100);
       data[e + offset] =
           (len << 48) | (val << 16) | (uint64_t(e >= 0 ? '+' : '-') << 8) | 'e';
     }
