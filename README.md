@@ -171,15 +171,9 @@ We would like to express our gratitude to the individuals who have made
 * Yaoyuan Guo ([@ibireme](https://github.com/ibireme)) - Author of the yy
   algorithm, whose ideas influenced key optimizations used in Żmij.
 
-* Cassio Neri ([@cassioneri](https://github.com/cassioneri)) - Proposed the
-  single-candidate rounding strategy used in Żmij.
-
 * Junekey Jeon ([@jk-jeon](https://github.com/jk-jeon)) - Author of the
   Dragonbox algorithm, which informed design and benchmarking comparisons for
   Żmij, as well as the `to_decimal` API.
-
-* Russ Cox ([@rsc](https://github.com/rsc)) - Devised the simplified longer
-  candidate selection for Schubfach adopted in Żmij's fallback path.
 
 * Community contributors who provided feedback, issues, suggestions, and
   occasional commits, helping improve the robustness and performance of Żmij.

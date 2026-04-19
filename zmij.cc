@@ -1011,44 +1011,6 @@ struct to_decimal_result {
   bool has_last_digit = false;
 };
 
-template <typename UInt>
-ZMIJ_INLINE auto to_decimal_schubfach(UInt bin_sig, int64_t bin_exp,
-                                      bool regular) noexcept
-    -> to_decimal_result {
-  constexpr int num_bits = std::numeric_limits<UInt>::digits;
-  int dec_exp = compute_dec_exp(bin_exp, regular);
-  unsigned char exp_shift = compute_exp_shift(bin_exp, dec_exp);
-  uint128 pow10 = pow10_significands[-dec_exp];
-
-  // Shubfach requires strict overestimates of powers of 10.
-  ++(num_bits == 64 ? pow10.lo : pow10.hi);
-
-  // Shift the significand so that boundaries are integer.
-  // The two extra bits act as guard and sticky for correct rounding.
-  UInt bin_sig_shifted = bin_sig << 2;
-  UInt odd = bin_sig & 1;
-
-  // Compute the lower and upper bounds of the rounding interval by
-  // multiplying them by the power of 10 and applying modified rounding.
-  UInt lower = (bin_sig_shifted - (regular + 1)) << exp_shift;
-  lower = umulhi_inexact_to_odd(pow10.hi, pow10.lo, lower) + odd;
-  lower = (lower + 3) >> 2;  // ceil
-  UInt upper = (bin_sig_shifted + 2) << exp_shift;
-  upper = umulhi_inexact_to_odd(pow10.hi, pow10.lo, upper) - odd;
-  upper = upper >> 2;  // floor
-
-  // The idea of using a single shorter candidate is by Cassio Neri.
-  // It is less or equal to the upper bound by construction.
-  UInt shorter = (upper / 10) * 10;
-  if (shorter >= lower) return {int64_t(shorter), dec_exp};
-
-  // The simplified longer candidate selection is by Russ Cox.
-  UInt dec_sig =
-      umulhi_inexact_to_odd(pow10.hi, pow10.lo, bin_sig_shifted << exp_shift);
-  dec_sig = (dec_sig + 1 + ((dec_sig >> 2) & 1)) >> 2;  // round
-  return {int64_t(lower == upper ? lower : dec_sig), dec_exp};
-}
-
 // Returns x / 10 for x <= 2**62.
 ZMIJ_INLINE auto div10(uint64_t x) noexcept -> uint64_t {
   assert(x <= (1ull << 62));
@@ -1215,21 +1177,23 @@ auto write(Float value, char* buffer) noexcept -> char* {
       memcpy(buffer, "0", 2);
       return buffer + 1;
     }
-    dec = to_decimal_schubfach(bin_sig, 1 - traits::exp_offset, true);
-    while (dec.sig < threshold) {
-      dec.sig *= 10;
-      --dec.exp;
+    dec = ::to_decimal<Float>(bin_sig, 1, true, *c);
+    long long dec_sig =
+      dec.sig * 10 + (dec.has_last_digit ? dec.last_digit : 0);
+    int dec_exp = dec.exp;
+    while (dec_sig < threshold) {
+      dec_sig *= 10;
+      --dec_exp;
     }
-    long long div10 = ::div10(dec.sig);
-    int last_digit = dec.sig - div10 * 10;
-    dec = {div10, dec.exp, last_digit, last_digit != 0};
+    long long d = ::div10(dec_sig);
+    int last_digit = dec_sig - d * 10;
+    dec = {d, dec_exp, last_digit, last_digit != 0};
   } else {
     dec = ::to_decimal<Float>(bin_sig | traits::implicit_bit, bin_exp,
                               bin_sig != 0, *c);
   }
-  int dec_exp = dec.exp;
   bool extra_digit = dec.sig >= threshold;
-  dec_exp += traits::max_digits10 - 2 + extra_digit;
+  int dec_exp = dec.exp + traits::max_digits10 - 2 + extra_digit;
   if (traits::num_bits == 32 && dec.sig < uint32_t(1e6)) [[ZMIJ_UNLIKELY]] {
     dec.sig = 10 * dec.sig + (dec.has_last_digit ? dec.last_digit : 0);
     dec.has_last_digit = false;
