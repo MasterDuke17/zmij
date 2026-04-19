@@ -854,7 +854,7 @@ template <> struct dec_digits<64> {
 // up to 17 decimal digits (16-17 for normals) for double (num_bits == 64) and
 // up to 9 digits (8-9 for normals) for float.
 template <int num_bits>
-ZMIJ_INLINE auto to_digits(char* buffer, uint64_t value, bool extra_digit,
+ZMIJ_INLINE auto to_digits(uint64_t value, bool extra_digit,
                            const constants& c) noexcept
     -> dec_digits<num_bits> {
 #if !ZMIJ_USE_NEON && !ZMIJ_USE_SSE
@@ -902,10 +902,9 @@ ZMIJ_INLINE auto to_digits(char* buffer, uint64_t value, bool extra_digit,
 }
 
 template <>
-ZMIJ_INLINE auto to_digits<32>(char* buffer, uint64_t value, bool extra_digit,
-                               const constants&) noexcept -> dec_digits<32> {
-  write_if(buffer, value / 100'000'000, extra_digit);
-  auto result = to_bcd8(value % 100'000'000);
+ZMIJ_INLINE auto to_digits<32>(uint64_t value, bool, const constants&) noexcept
+    -> dec_digits<32> {
+  auto result = to_bcd8(value);
   return {result.bcd + zeros, result.len};
 }
 
@@ -1093,12 +1092,10 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp, bool regular,
     integral += round_up;
 
     int digit = int(umul128_add_hi64(fractional, 10, (uint64_t(1) << 63) - 1));
-    int lo = int(umul128_add_hi64(fractional - (half_ulp >> 1), 10, ~uint64_t(0)));
+    int lo =
+        int(umul128_add_hi64(fractional - (half_ulp >> 1), 10, ~uint64_t(0)));
     if (digit < lo) digit = lo;
-    if (num_bits == 64)
-      return {integral, dec_exp, digit, (round_up + round_down) == 0};
-    digit = (round_up + round_down) != 0 ? 0 : digit;
-    return {integral * 10 + digit, dec_exp};
+    return {integral, dec_exp, digit, (round_up + round_down) == 0};
   }
 
   if (num_bits == 32) {
@@ -1120,8 +1117,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp, bool regular,
     uint64_t rem = prod & ((1ull << extra_shift) - 1);
     digit += rem > (1ull << (extra_shift - 1)) ||
              (rem == (1ull << (extra_shift - 1)) && (digit & 1));
-    digit = (round_up + round_down) != 0 ? 0 : digit;
-    return {integral * 10 + digit, dec_exp};
+    return {integral, dec_exp, digit, (round_up + round_down) == 0};
   }
 
   // An optimization by Xiang JunBo:
@@ -1210,7 +1206,7 @@ auto write(Float value, char* buffer) noexcept -> char* {
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
 
   to_decimal_result dec;
-  uint64_t threshold = uint64_t(traits::num_bits == 64 ? c->threshold : 1e8);
+  uint64_t threshold = uint64_t(traits::num_bits == 64 ? c->threshold : 1e7);
   if (bin_exp == 0 || bin_exp == traits::exp_mask) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) {
       memcpy(buffer, bin_sig == 0 ? "inf" : "nan", 4);
@@ -1225,12 +1221,9 @@ auto write(Float value, char* buffer) noexcept -> char* {
       dec.sig *= 10;
       --dec.exp;
     }
-    if (traits::num_bits == 64) {
-      long long div10 = ::div10(dec.sig);
-      dec.last_digit = dec.sig - div10 * 10;
-      dec.has_last_digit = dec.last_digit != 0;
-      dec.sig = div10;
-    }
+    long long div10 = ::div10(dec.sig);
+    int last_digit = dec.sig - div10 * 10;
+    dec = {div10, dec.exp, last_digit, last_digit != 0};
   } else {
     dec = ::to_decimal<Float>(bin_sig | traits::implicit_bit, bin_exp,
                               bin_sig != 0, *c);
@@ -1238,11 +1231,11 @@ auto write(Float value, char* buffer) noexcept -> char* {
   int dec_exp = dec.exp;
   bool extra_digit = dec.sig >= threshold;
   dec_exp += traits::max_digits10 - 2 + extra_digit;
-  if (traits::num_bits == 32 && dec.sig < uint32_t(1e7)) [[ZMIJ_UNLIKELY]] {
-    dec.sig *= 10;
+  if (traits::num_bits == 32 && dec.sig < uint32_t(1e6)) [[ZMIJ_UNLIKELY]] {
+    dec.sig = 10 * dec.sig + (dec.has_last_digit ? dec.last_digit : 0);
+    dec.has_last_digit = false;
     --dec_exp;
   }
-
   char* start = buffer;
   if (dec_exp >= traits::min_fixed_dec_exp &&
       dec_exp <= traits::max_fixed_dec_exp) {
@@ -1253,7 +1246,7 @@ auto write(Float value, char* buffer) noexcept -> char* {
     memcpy(buffer, &zeros, 8);  // For dec_exp < 0.
     const auto& fmt = dec_exp_formats.get<traits>(dec_exp);
     char* sig_start = buffer + fmt.start_pos;
-    auto dig = to_digits<traits::num_bits>(sig_start, dec.sig, extra_digit, *c);
+    auto dig = to_digits<traits::num_bits>(dec.sig, extra_digit, *c);
     int num_digits = dig.num_digits;
     if (traits::num_bits == 64) {
       memcpy(sig_start, &dig.digits, 16);
@@ -1261,21 +1254,25 @@ auto write(Float value, char* buffer) noexcept -> char* {
       sig_start[15 + extra_digit] = '0' + dec.last_digit;
       num_digits = dec.has_last_digit ? 16 : num_digits - 1;
     } else {
-      memcpy(sig_start + extra_digit, &dig.digits, sizeof(dig.digits));
+      memcpy(sig_start, &dig.digits, sizeof(dig.digits));
+      if (!extra_digit) memmove(sig_start, sig_start + 1, 7);
+      sig_start[7 + extra_digit] = '0' + dec.last_digit;
+      num_digits = dec.has_last_digit ? 8 : num_digits - 1;
     }
     memmove(start + fmt.shift_pos, start + fmt.point_pos, sizeof(dig.digits));
     start[fmt.point_pos] = '.';
     return sig_start + fmt.exp_pos[num_digits + extra_digit - 1];
   }
 
-  auto dig = to_digits<traits::num_bits>(buffer + 1, dec.sig, extra_digit, *c);
-  buffer += extra_digit + (traits::num_bits != 64);
+  auto dig = to_digits<traits::num_bits>(dec.sig, extra_digit, *c);
+  buffer += extra_digit;
   memcpy(buffer, &dig.digits, sizeof(dig.digits));
   if (traits::num_bits == 64) {
     buffer[16] = '0' + dec.last_digit;
     buffer += dec.has_last_digit ? 17 : dig.num_digits;
   } else {
-    buffer += dig.num_digits;
+    buffer[8] = '0' + dec.last_digit;
+    buffer += dec.has_last_digit ? 9 : dig.num_digits;
   }
   start[0] = start[1];
   start[1] = '.';
