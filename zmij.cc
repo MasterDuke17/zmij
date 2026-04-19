@@ -1237,12 +1237,12 @@ auto write(Float value, char* buffer) noexcept -> char* {
     dec.has_last_digit = false;
     --dec_exp;
   }
+  auto dig = to_digits<traits::num_bits>(dec.sig, extra_digit, *c);
 
   if (dec_exp >= traits::min_fixed_dec_exp &&
       dec_exp <= traits::max_fixed_dec_exp) {
     memcpy(buffer, &zeros, 8);  // For dec_exp < 0.
     const auto& fmt = dec_exp_formats.get<traits>(dec_exp);
-    auto dig = to_digits<traits::num_bits>(dec.sig, extra_digit, *c);
     char* start = buffer + fmt.start_pos;
     memcpy(start, &dig.digits, bcd_size);
     memmove(start, start + !extra_digit, bcd_size);  // Cheap on ARM.
@@ -1253,7 +1253,6 @@ auto write(Float value, char* buffer) noexcept -> char* {
     return start + fmt.exp_pos[num_digits + extra_digit - 1];
   }
 
-  auto dig = to_digits<traits::num_bits>(dec.sig, extra_digit, *c);
   char* start = buffer;
   buffer += extra_digit;
   memcpy(buffer, &dig.digits, bcd_size);
