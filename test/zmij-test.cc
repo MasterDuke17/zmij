@@ -194,6 +194,7 @@ TEST(dtoa_test, fixed_with_zeros) {
   EXPECT_EQ(dtoa(43210.0), "43210");
   EXPECT_EQ(dtoa(43210.1), "43210.1");
   EXPECT_EQ(dtoa(10000), "10000");
+  EXPECT_EQ(dtoa(-5942736479622170.0), "-5942736479622170");
 }
 
 #if !ZMIJ_C

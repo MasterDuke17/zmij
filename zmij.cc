@@ -1179,7 +1179,7 @@ auto write(Float value, char* buffer) noexcept -> char* {
     }
     dec = ::to_decimal<Float>(bin_sig, 1, true, *c);
     long long dec_sig =
-      dec.sig * 10 + (dec.has_last_digit ? dec.last_digit : 0);
+        dec.sig * 10 + (dec.has_last_digit ? dec.last_digit : 0);
     int dec_exp = dec.exp;
     while (dec_sig < threshold) {
       dec_sig *= 10;
@@ -1210,7 +1210,8 @@ auto write(Float value, char* buffer) noexcept -> char* {
     buffer += fmt.start_pos;
     memcpy(buffer, &dig.digits, bcd_size);
     memmove(buffer, buffer + !extra_digit, bcd_size);  // Cheap on aarch64.
-    buffer[bcd_size - 1 + extra_digit] = '0' + dec.last_digit;
+    buffer[bcd_size + extra_digit - 1] =
+        '0' + (dec.has_last_digit ? dec.last_digit : 0);
     memmove(start + fmt.shift_pos, start + fmt.point_pos, bcd_size);
     start[fmt.point_pos] = '.';
     int num_digits = dec.has_last_digit ? bcd_size : dig.num_digits - 1;
