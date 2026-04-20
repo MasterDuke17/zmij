@@ -1164,10 +1164,9 @@ auto write(Float value, char* buffer) noexcept -> char* {
 
   const auto* c = &consts;
   ZMIJ_ASM(("" : "+r"(c)));  // Load constants from memory.
+  uint64_t threshold = uint64_t(traits::num_bits == 64 ? c->threshold : 1e7);
 
   to_decimal_result dec;
-  uint64_t threshold = uint64_t(traits::num_bits == 64 ? c->threshold : 1e7);
-  constexpr int bcd_size = traits::num_bits == 64 ? 16 : 8;
   if (bin_exp == 0 || bin_exp == traits::exp_mask) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) {
       memcpy(buffer, bin_sig == 0 ? "inf" : "nan", 4);
@@ -1203,6 +1202,7 @@ auto write(Float value, char* buffer) noexcept -> char* {
   // Write significand/fixed.
   char* start = buffer;
   auto dig = to_digits<traits::num_bits>(dec.sig, extra_digit, *c);
+  constexpr int bcd_size = traits::num_bits == 64 ? 16 : 8;
   if (dec_exp >= traits::min_fixed_dec_exp &&
       dec_exp <= traits::max_fixed_dec_exp) {
     memcpy(start, &zeros, 8);  // For dec_exp < 0.
