@@ -635,18 +635,20 @@ const uint128 expected[] = {
 TEST(pow10_test, verify) {
   constexpr int dec_exp_min = -292;
   for (int i = 0; i < int(sizeof(expected) / sizeof(*expected)); ++i) {
-    auto actual = pow10_significands[dec_exp_min + i];
+    auto actual = consts.pow10_significands[dec_exp_min + i];
     EXPECT_EQ(actual.hi, expected[i].hi);
     auto diff = int64_t(actual.lo - expected[i].lo);
     EXPECT_GE(diff, pow10_significand_table::compress ? -1 : 0)
-        << "i=" << i << " actual.lo=" << actual.lo << " expected.lo=" << expected[i].lo;
+        << "i=" << i << " actual.lo=" << actual.lo
+        << " expected.lo=" << expected[i].lo;
     EXPECT_LE(diff, pow10_significand_table::compress ? 1 : 0)
-        << "i=" << i << " actual.lo=" << actual.lo << " expected.lo=" << expected[i].lo;
+        << "i=" << i << " actual.lo=" << actual.lo
+        << " expected.lo=" << expected[i].lo;
   }
 }
 
 TEST(pow10_test, umulhi_inexact_to_odd) {
-  auto pow10 = pow10_significands[-292];
+  auto pow10 = consts.pow10_significands[-292];
   EXPECT_EQ(umulhi_inexact_to_odd(pow10.hi, pow10.lo,
                                   uint64_t(0x1234567890abcdef << 1)),
             0x24554a3ce60a45f5);

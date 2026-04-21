@@ -459,7 +459,6 @@ struct pow10_significand_table {
     return {hi[-dec_exp], lo[-dec_exp]};
   }
 };
-alignas(64) constexpr pow10_significand_table pow10_significands;
 
 // Computes a shift so that, after scaling by a power of 10, the intermediate
 // result always has a fixed 128-bit fractional part (for double).
@@ -629,7 +628,7 @@ inline auto write_if(char* buffer, uint32_t digit, bool condition) noexcept
   return buffer + condition;
 }
 
-alignas(64) constexpr struct constants {
+struct constants {
   static constexpr auto splat64(uint64_t x) -> uint128 { return {x, x}; }
   static constexpr auto splat32(uint32_t x) -> uint128 {
     return splat64(uint64_t(x) << 32 | x);
@@ -677,7 +676,10 @@ alignas(64) constexpr struct constants {
   uint128 neg10k = splat64(::neg10k);
   uint128 zeros = splat64(::zeros);
 #endif    // ZMIJ_USE_SSE
-} consts;
+
+  alignas(64) pow10_significand_table pow10_significands;
+};
+alignas(64) constexpr constants consts;
 
 #if ZMIJ_USE_NEON  // An optimized version for NEON by Dougall Johnson.
 
@@ -1040,7 +1042,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp, bool regular,
   if (!regular) [[ZMIJ_UNLIKELY]] {
     int dec_exp = compute_dec_exp(bin_exp, false);
     unsigned char shift = compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
-    uint128 pow10 = pow10_significands[-dec_exp - 1];
+    uint128 pow10 = c.pow10_significands[-dec_exp - 1];
     uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
 
     long long integral = p.hi >> extra_shift;
@@ -1061,7 +1063,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp, bool regular,
   if (num_bits == 32) {
     constexpr int extra_shift = 34;
     unsigned char shift = compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
-    uint64_t pow10_hi = pow10_significands[-dec_exp - 1].hi;
+    uint64_t pow10_hi = c.pow10_significands[-dec_exp - 1].hi;
     uint64_t p = umul128_hi64(pow10_hi + 1, uint64_t(bin_sig) << shift);
 
     long long integral = p >> extra_shift;
@@ -1108,7 +1110,7 @@ ZMIJ_INLINE auto to_decimal(UInt bin_sig, int64_t raw_exp, bool regular,
           ? exp_shifts.data[bin_exp + traits::exp_offset]
           : compute_exp_shift(bin_exp, dec_exp + 1) + extra_shift;
   ZMIJ_ASM(("" : "+r"(dec_exp)));  // Force 32-bit reg for sxtw addressing.
-  uint128 pow10 = pow10_significands[-dec_exp - 1];
+  uint128 pow10 = c.pow10_significands[-dec_exp - 1];
   uint128 p = umul192_hi128(pow10.hi, pow10.lo, bin_sig << shift);
 
   long long integral = p.hi >> extra_shift;
