@@ -1167,7 +1167,8 @@ auto write(Float value, char* buffer) noexcept -> char* {
   uint64_t threshold = uint64_t(traits::num_bits == 64 ? c->threshold : 1e7);
 
   to_decimal_result dec;
-  if (bin_exp == 0 || bin_exp == traits::exp_mask) [[ZMIJ_UNLIKELY]] {
+  bool is_normal = unsigned(bin_exp - 1) < unsigned(traits::exp_mask - 1);
+  if (!is_normal) [[ZMIJ_UNLIKELY]] {
     if (bin_exp != 0) {
       memcpy(buffer, bin_sig == 0 ? "inf" : "nan", 4);
       return buffer + 3;
