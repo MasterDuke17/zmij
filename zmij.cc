@@ -318,6 +318,14 @@ auto umulhi_inexact_to_odd(uint64_t x_hi, uint64_t, uint32_t y) noexcept
   return uint32_t(p >> 32) | ((uint32_t(p) >> 1) != 0);
 }
 
+// Returns x / 10 for x <= 2**62.
+ZMIJ_INLINE auto div10(uint64_t x) noexcept -> uint64_t {
+  assert(x <= (1ull << 62));
+  // ceil(2**64 / 10) computed as (1 << 63) / 5 + 1 to avoid int128.
+  constexpr uint64_t div10_sig64 = (1ull << 63) / 5 + 1;
+  return ZMIJ_USE_INT128 ? umul128_hi64(x, div10_sig64) : x / 10;
+}
+
 // Computes the decimal exponent as floor(log10(2**bin_exp)) if regular or
 // floor(log10(3/4 * 2**bin_exp)) otherwise, without branching.
 constexpr auto compute_dec_exp(int bin_exp, bool regular = true) noexcept
@@ -908,118 +916,12 @@ ZMIJ_INLINE auto to_digits<32>(uint64_t value, bool, const constants&) noexcept
   return {result.bcd + zeros, result.len};
 }
 
-#if ZMIJ_USE_SIMD_SHUFFLE
-struct shuffle_table {
-  constexpr static bool merge_tables = ZMIJ_USE_SSE4_1;
-  constexpr static size_t table_size =
-      (1 + merge_tables) * (float_traits<double>::max_fixed_dec_exp + 2);
-  alignas(16 * (1 + merge_tables)) uint8_t data[table_size][16] = {};
-  constexpr shuffle_table() {
-    for (int i = 0; i < float_traits<double>::max_fixed_dec_exp + 2; ++i) {
-      uint8_t v = 0xf;
-      for (int j = 0; j < 16; ++j) {
-        data[(1 + merge_tables) * i][j] = i == j ? 0x80 : v--;
-        if (merge_tables) data[2 * i + 1][j] = i == j ? '.' : '0';
-      }
-    }
-  }
-
-  ZMIJ_INLINE auto get_shuffler(int index) const noexcept -> const uint8_t* {
-    assert((1 + merge_tables) * index < table_size);
-    // GCC combines the address calculation with the one in get_point_and_zeros
-    // below.
-    return merge_tables ? data[0] + 32 * index : &data[index][0];
-  }
-
-  ZMIJ_INLINE auto get_point_and_zeros(int index) const noexcept
-      -> const uint8_t* {
-    assert(merge_tables && 2 * index + 1 < table_size);
-    // GCC combines the address calculation with the one in get_shuffler above.
-    return data[0] + 32 * index + 16;
-  }
-};
-constexpr shuffle_table shuffles;
-#endif  // ZMIJ_USE_SIMD_SHUFFLE
-
-auto write_fixed_double_simd(char* buffer, uint64_t dec_sig, int dec_exp,
-                             bool extra_digit, const constants& c) noexcept
-    -> char* {
-  int point_index = dec_exp + !extra_digit, len = 0;
-
-#if ZMIJ_USE_NEON && !ZMIJ_OPTIMIZE_SIZE
-  uint64_t a = dec_sig / 10000000000000000ull;
-  uint64_t remaining = dec_sig - a * 10000000000000000ull;
-  buffer = write_if(buffer, uint32_t(a), extra_digit);
-  auto unshuffled_digits = to_unshuffled_digits<true>(remaining, c);
-  auto unshuffled_str = vaddq_u16(vreinterpretq_u16_u8(unshuffled_digits),
-                                  vreinterpretq_u16_s8(vdupq_n_s8('0')));
-  auto str = vqtbl1q_u8(vreinterpretq_u8_u16(unshuffled_str),
-                        vld1q_u8(shuffles.get_shuffler(point_index)));
-
-  // Count trailing zeros.
-  uint8x16_t is_not_zero = vcgtzq_s8(vreinterpretq_s8_u8(unshuffled_digits));
-  uint64_t zeroes = vget_lane_u64(
-      vreinterpret_u64_u8(vshrn_n_u16(vreinterpretq_u16_u8(is_not_zero), 4)),
-      0);
-  len = 16 - ((zeroes ? ctz(zeroes) : 64) >> 2);
-
-  // Write 20 bytes non-overlappingly.
-  uint32_t trailing_digit = vreinterpretq_u32_u16(unshuffled_str)[0];
-  memcpy(buffer, &str, sizeof(str));
-  memcpy(buffer + 16, &trailing_digit, 4);  // only need the lowest byte
-
-  char* point = buffer + point_index;
-  *point = '.';
-#elif ZMIJ_USE_SSE4_1 && !ZMIJ_OPTIMIZE_SIZE
-  uint32_t abbccddee = uint32_t(dec_sig / 100'000'000);
-  uint32_t ffgghhii = uint32_t(dec_sig % 100'000'000);
-  uint32_t a = abbccddee / 100'000'000;
-  uint32_t bbccddee = abbccddee % 100'000'000;
-
-  buffer = write_if(buffer, a, extra_digit);
-
-  __m128i zeros = _mm_load_si128(m128ptr(&c.zeros));
-
-  auto reversed_bcd = to_unshuffled_digits(bbccddee, ffgghhii, c);
-
-  // Count trailing zeros.
-  __m128i mask128 = _mm_cmpgt_epi8(reversed_bcd, _mm_setzero_si128());
-  uint32_t mask = _mm_movemask_epi8(mask128) | (1u << 16);
-#  if defined(__BMI1__) && !defined(ZMIJ_NO_BUILTINS)
-  len = 16 - _tzcnt_u32(mask);
-#  else
-  len = 16 - ctz(mask);
-#  endif
-
-  __m128i shuffler =
-      _mm_load_si128(m128ptr(shuffles.get_shuffler(point_index)));
-  __m128i bcd = _mm_shuffle_epi8(reversed_bcd, shuffler);  // SSSE3
-  __m128i point_mask =
-      _mm_load_si128(m128ptr(shuffles.get_point_and_zeros(point_index)));
-  __m128i digits_with_point = _mm_or_si128(bcd, point_mask);
-
-  // Write 20 bytes non-overlappingly.
-  uint32_t trailing_digit = _mm_cvtsi128_si32(reversed_bcd) + '0';
-  _mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), digits_with_point);
-  memcpy(buffer + 16, &trailing_digit, 4);  // only need the lowest byte
-#endif  // ZMIJ_USE_SSE4_1 && !ZMIJ_OPTIMIZE_SIZE
-  return buffer + (len > point_index ? len + 1 : point_index);
-}
-
 struct to_decimal_result {
   long long sig;
   int exp;
   int last_digit = 0;
   bool has_last_digit = false;
 };
-
-// Returns x / 10 for x <= 2**62.
-ZMIJ_INLINE auto div10(uint64_t x) noexcept -> uint64_t {
-  assert(x <= (1ull << 62));
-  // ceil(2**64 / 10) computed as (1 << 63) / 5 + 1 to avoid int128.
-  constexpr uint64_t div10_sig64 = (1ull << 63) / 5 + 1;
-  return ZMIJ_USE_INT128 ? umul128_hi64(x, div10_sig64) : x / 10;
-}
 
 // Here be 🐉s.
 // Converts a binary FP number bin_sig * 2**bin_exp to the shortest decimal
