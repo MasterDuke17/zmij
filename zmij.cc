@@ -145,16 +145,15 @@ static_assert(!ZMIJ_USE_SSE4_1 || ZMIJ_USE_SSE);
 #  define ZMIJ_ASM(x)
 #endif
 
-// Used to declare struct members that should live in memory for ARM64 but should be
-// implemented as immediates in the x64 assembly.
-#ifndef ZMIJ_CONST_SPECS
-#  if ZMIJ_AARCH64
-#    define ZMIJ_CONST_SPECS
-#  else
-#    define ZMIJ_CONST_SPECS static constexpr
-#  endif
+// Declares struct members that must live in memory on ARM64 but are encoded as
+// immediates in the x64 assembly.
+#ifdef ZMIJ_CONST_DECL
+// Use the provided definition.
+#elif ZMIJ_AARCH64
+#  define ZMIJ_CONST_DECL
+#else
+#  define ZMIJ_CONST_DECL static constexpr
 #endif
-
 
 namespace {
 
@@ -663,9 +662,9 @@ struct constants {
            u64(d) << 24 | u64(c) << 16 | u64(b) << +8 | u64(a);
   }
 
-  ZMIJ_CONST_SPECS uint64_t threshold = 1e15;
+  ZMIJ_CONST_DECL uint64_t threshold = 1e15;
   // +6 is needed for boundary cases found by verify.py.
-  ZMIJ_CONST_SPECS uint64_t biased_half = (uint64_t(1) << 63) + 6;
+  ZMIJ_CONST_DECL uint64_t biased_half = (uint64_t(1) << 63) + 6;
 
 #if ZMIJ_USE_NEON
   static constexpr int32_t neg10k = -10000 + 0x10000;
